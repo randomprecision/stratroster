@@ -1,6 +1,7 @@
-Stratroster
-PHP and SQLite based webapp for tracking fantasy baseball rosters (Strat-O-Matic focused)
+Stratroster:  PHP and SQLite based webapp for tracking fantasy baseball rosters (Strat-O-Matic focused)
+
 =======
+
 Thank you for your interest in Stratroster! 
 
 *Stratroster* is a simple, nuts-and-bolts approach to tracking rosters in fantasy baseball leagues -- specifically Strat-o-Matic super advanced baseball board game leagues. My goal in making this application was to make it as easy as possible to use for anyone in a pen-and-paper Strat-O-Matic baseball league. 
