@@ -49,11 +49,6 @@ if (isset($_POST['upload_csv'])) {
         // Validate CSV format
         $expected_columns = ['First Name', 'Last Name', 'MLB Team', 'Position', 'Bats', 'Throws', 'No Card'];
 
-        // Debug output
-        echo "<pre>";
-        print_r($header);
-        echo "</pre>";
-
         // Check for header column mismatch
         $missing_columns = array_diff($expected_columns, $header);
         if (!empty($missing_columns)) {
@@ -96,7 +91,6 @@ if (isset($_POST['upload_csv'])) {
         $error = "Error uploading CSV file.";
     }
 }
-
 
 // Fetch the user's team roster
 $roster_stmt = $db->prepare('SELECT * FROM players WHERE fantasy_team_id = ? ORDER BY last_name');
@@ -318,4 +312,3 @@ function formatPlayerName($player) {
     <p class="center"><a href="dashboard.php">Back to Dashboard</a></p>
 </body>
 </html>
-
