@@ -78,21 +78,22 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && (isset($_POST['edit_team_id']) || is
     $teams_stmt = $db->query('SELECT * FROM teams');
     $teams = $teams_stmt->fetchAll(PDO::FETCH_ASSOC);
 }
-// Refresh the users list after updating a user
+// Handle form submission for managing user details
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['manage_user_id']) && isset($_POST['manage_username']) && isset($_POST['manage_email'])) {
     $manage_user_id = $_POST['manage_user_id'];
     $manage_username = $_POST['manage_username'];
     $manage_email = $_POST['manage_email'];
     $manage_password = $_POST['manage_password'];
+    $manage_is_admin = isset($_POST['manage_is_admin']) ? 1 : 0;
 
     if (empty($manage_password)) {
         // Update user details without changing the password
-        $update_user_stmt = $db->prepare('UPDATE users SET username = ?, email = ? WHERE id = ?');
-        $update_user_stmt->execute([$manage_username, $manage_email, $manage_user_id]);
+        $update_user_stmt = $db->prepare('UPDATE users SET username = ?, email = ?, is_admin = ? WHERE id = ?');
+        $update_user_stmt->execute([$manage_username, $manage_email, $manage_is_admin, $manage_user_id]);
     } else {
         // Update user details including the password
-        $update_user_stmt = $db->prepare('UPDATE users SET username = ?, email = ?, password = ? WHERE id = ?');
-        $update_user_stmt->execute([$manage_username, $manage_email, password_hash($manage_password, PASSWORD_BCRYPT), $manage_user_id]);
+        $update_user_stmt = $db->prepare('UPDATE users SET username = ?, email = ?, password = ?, is_admin = ? WHERE id = ?');
+        $update_user_stmt->execute([$manage_username, $manage_email, password_hash($manage_password, PASSWORD_BCRYPT), $manage_is_admin, $manage_user_id]);
     }
 
     $message = "User details updated successfully.";
@@ -140,6 +141,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['new_username']) && iss
     $new_username = $_POST['new_username'];
     $new_email = $_POST['new_email'];
     $new_password = $_POST['new_password'];
+    $new_is_admin = isset($_POST['new_is_admin']) ? 1 : 0; // Capture the is_admin value
 
     // Check if the username or email already exists
     $check_user_stmt = $db->prepare('SELECT COUNT(*) FROM users WHERE username = ? OR email = ?');
@@ -150,8 +152,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['new_username']) && iss
         $message = "Username or email already exists.";
     } else {
         // Insert new user into the database
-        $insert_user_stmt = $db->prepare('INSERT INTO users (username, email, password) VALUES (?, ?, ?)');
-        $insert_user_stmt->execute([$new_username, $new_email, password_hash($new_password, PASSWORD_BCRYPT)]);
+        $insert_user_stmt = $db->prepare('INSERT INTO users (username, email, password, is_admin) VALUES (?, ?, ?, ?)');
+        $insert_user_stmt->execute([$new_username, $new_email, password_hash($new_password, PASSWORD_BCRYPT), $new_is_admin]);
         $message = "New user " . htmlspecialchars($new_username) . " created successfully.";
 
         // Refresh the users list after adding a new user
@@ -197,6 +199,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['reset_draft'])) {
         $message = "Failed to reset draft: " . $e->getMessage();
     }
 }
+
 // Handle database initialization
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['confirm_init']) && $_POST['confirm_init'] === 'YES') {
     try {
@@ -237,7 +240,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['confirm_init']) && $_P
     }
 }
 ?>
-
 <!DOCTYPE html>
 <html>
 <head>
@@ -302,7 +304,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['confirm_init']) && $_P
             </tr>
         <?php endforeach; ?>
     </table>
-
     <!-- Additional admin functionalities -->
     <div class="form-container">
         <h3>Add New Team</h3>
@@ -367,6 +368,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['confirm_init']) && $_P
                 <input type="email" id="manage_email" name="manage_email" value="<?= htmlspecialchars($selected_user['email']) ?>" required>
                 <label for="manage_password">Password (leave blank to keep current):</label>
                 <input type="password" id="manage_password" name="manage_password">
+                <label for="manage_is_admin">Admin:</label>
+                <input type="checkbox" id="manage_is_admin" name="manage_is_admin" value="1" <?= $selected_user['is_admin'] ? 'checked' : '' ?>>
                 <button type="submit">Save Changes</button>
             </form>
         <?php endif; ?>
@@ -374,7 +377,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['confirm_init']) && $_P
             <p class="success"><?= $message ?></p>
         <?php endif; ?>
     </div>
-
     <div class="form-container">
         <h3>Create New User</h3>
         <form method="POST">
@@ -384,6 +386,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['confirm_init']) && $_P
             <input type="email" id="new_email" name="new_email" required>
             <label for="new_password">Password:</label>
             <input type="password" id="new_password" name="new_password" required>
+            <label for="new_is_admin">Admin:</label>
+            <input type="checkbox" id="new_is_admin" name="new_is_admin" value="1">
             <button type="submit">Create User</button>
         </form>
     </div>
