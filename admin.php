@@ -7,6 +7,24 @@ if (!isset($_SESSION['user_id']) || $_SESSION['is_admin'] != 1) {
     header('Location: login.php');
     exit;
 }
+if (isset($_GET['backup']) && $_GET['backup'] == 'true') {
+    $dbFile = '/var/www/stratroster/stratroster.db'; // Path to your SQLite database file
+    $backupFile = 'stratroster_backup_' . date('Y-m-d_H-i-s') . '.db'; // Backup file name with timestamp
+
+    if (file_exists($dbFile)) {
+        header('Content-Description: File Transfer');
+        header('Content-Type: application/octet-stream');
+        header('Content-Disposition: attachment; filename=' . basename($backupFile));
+        header('Expires: 0');
+        header('Cache-Control: must-revalidate');
+        header('Pragma: public');
+        header('Content-Length: ' . filesize($dbFile));
+        readfile($dbFile);
+        exit;
+    } else {
+        $message = "Failed to find the database file.";
+    }
+}
 
 // Fetch the list of teams
 $teams_stmt = $db->query('SELECT * FROM teams');
@@ -304,6 +322,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['confirm_init']) && $_P
             </tr>
         <?php endforeach; ?>
     </table>
+
     <!-- Additional admin functionalities -->
     <div class="form-container">
         <h3>Add New Team</h3>
@@ -402,6 +421,15 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['confirm_init']) && $_P
         </form>
     </div>
 
+    <!-- Backup Database Section -->
+    <div class="form-container">
+        <h3>Backup Database</h3>
+        <form method="GET">
+            <input type="hidden" name="backup" value="true">
+            <button type="submit">Download Backup</button>
+        </form>
+    </div>
+
     <div class="form-container">
         <h3>Reset Draft (and clear recent trades)</h3>
         <form method="POST">
@@ -421,4 +449,5 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['confirm_init']) && $_P
     <p><a href="dashboard.php">Back to Dashboard</a></p>
 </body>
 </html>
+
 
