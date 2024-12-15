@@ -1,30 +1,62 @@
 <?php
+
+// admin.php - the admin page for doing admin things
+
 session_start();
 $db = new PDO("sqlite:/var/www/stratroster/stratroster.db");
 
-// Ensure the user is logged in and is an admin
 if (!isset($_SESSION['user_id']) || $_SESSION['is_admin'] != 1) {
     header('Location: login.php');
     exit;
 }
-if (isset($_GET['backup']) && $_GET['backup'] == 'true') {
-    $dbFile = '/var/www/stratroster/stratroster.db'; // Path to your SQLite database file
-    $backupFile = 'stratroster_backup_' . date('Y-m-d_H-i-s') . '.db'; // Backup file name with timestamp
 
-    if (file_exists($dbFile)) {
-        header('Content-Description: File Transfer');
-        header('Content-Type: application/octet-stream');
-        header('Content-Disposition: attachment; filename=' . basename($backupFile));
-        header('Expires: 0');
-        header('Cache-Control: must-revalidate');
-        header('Pragma: public');
-        header('Content-Length: ' . filesize($dbFile));
-        readfile($dbFile);
-        exit;
-    } else {
-        $message = "Failed to find the database file.";
+ini_set('display_errors', 1);
+ini_set('display_startup_errors', 1);
+error_reporting(E_ALL);
+
+$user_id = $_SESSION['user_id'];
+$user_stmt = $db->prepare('SELECT * FROM users WHERE id = ?');
+$user_stmt->execute([$user_id]);
+$user = $user_stmt->fetch(PDO::FETCH_ASSOC);
+
+$team_assigned = isset($user['team_id']) && $user['team_id'] !== null && $user['team_id'] > 0;
+$user_has_team = $team_assigned ? true : false;
+
+$current_year = date('Y');
+
+// Handle form submission for updating league properties
+if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['league_name']) && isset($_POST['draft_year']) && isset($_POST['draft_rounds'])) {
+    $league_name = $_POST['league_name'];
+    $draft_year = $_POST['draft_year'];
+    $draft_rounds = $_POST['draft_rounds'];
+
+    // Update league name
+    $update_league_stmt = $db->prepare('UPDATE league_properties SET name = ?');
+    $update_league_stmt->execute([$league_name]);
+    $message = "League name updated successfully.";
+
+    // Check and update draft year if needed
+    if ($draft_year == $current_year + 1) {
+        $highest_year_stmt = $db->query('SELECT MAX(year) AS highest_year FROM draft_picks');
+        $highest_year = $highest_year_stmt->fetch(PDO::FETCH_ASSOC)['highest_year'];
+
+        if ($highest_year == $current_year + 1) {
+            // Increment year by one on all draft picks in the DB
+            $db->exec('UPDATE draft_picks SET year = year + 1');
+            $message .= " Draft year incremented by one.";
+        } elseif ($highest_year == $current_year + 2) {
+            $message .= " Draft picks already set to next calendar year.";
+        }
     }
+
+    // Update draft rounds
+    $update_rounds_stmt = $db->prepare('UPDATE league_properties SET draft_rounds = ?');
+    $update_rounds_stmt->execute([$draft_rounds]);
 }
+
+// Fetch the league name and draft rounds from league_properties table
+$league_stmt = $db->query('SELECT name, draft_rounds FROM league_properties LIMIT 1');
+$league = $league_stmt->fetch(PDO::FETCH_ASSOC);
 
 // Fetch the list of teams
 $teams_stmt = $db->query('SELECT * FROM teams');
@@ -34,18 +66,6 @@ $teams = $teams_stmt->fetchAll(PDO::FETCH_ASSOC);
 $users_stmt = $db->query('SELECT u.id, u.username, u.team_id, t.team_name FROM users u LEFT JOIN teams t ON u.team_id = t.id ORDER BY u.username');
 $users = $users_stmt->fetchAll(PDO::FETCH_ASSOC);
 
-// Fetch the league name from league_properties table
-$league_stmt = $db->query('SELECT name FROM league_properties LIMIT 1');
-$league = $league_stmt->fetch(PDO::FETCH_ASSOC);
-
-// Handle form submission for updating league name
-if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['league_name'])) {
-    $league_name = $_POST['league_name'];
-    $update_league_stmt = $db->prepare('UPDATE league_properties SET name = ?');
-    $update_league_stmt->execute([$league_name]);
-    $message = "League name updated successfully.";
-    $league['name'] = $league_name;
-}
 // Handle form submission for updating user team
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_user_team'])) {
     $user_id = $_POST['user_id'];
@@ -96,6 +116,58 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && (isset($_POST['edit_team_id']) || is
     $teams_stmt = $db->query('SELECT * FROM teams');
     $teams = $teams_stmt->fetchAll(PDO::FETCH_ASSOC);
 }
+
+// Handle form submission for updating user team
+if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_user_team'])) {
+    $user_id = $_POST['user_id'];
+    $team_id = $_POST['team_id'];
+
+    // Allow setting team to none
+    if ($team_id == 'none') {
+        $update_stmt = $db->prepare('UPDATE users SET team_id = NULL WHERE id = ?');
+        $update_stmt->execute([$user_id]);
+    } else {
+        $update_stmt = $db->prepare('UPDATE users SET team_id = ? WHERE id = ?');
+        $update_stmt->execute([$team_id, $user_id]);
+    }
+
+    $message = "User team updated successfully.";
+
+    // Refresh the users list after updating a team
+    $users_stmt = $db->query('SELECT u.id, u.username, u.team_id, t.team_name FROM users u LEFT JOIN teams t ON u.team_id = t.id ORDER BY u.username');
+    $users = $users_stmt->fetchAll(PDO::FETCH_ASSOC);
+}
+
+// Handle form submission for editing or deleting a team
+if ($_SERVER['REQUEST_METHOD'] == 'POST' && (isset($_POST['edit_team_id']) || isset($_POST['delete_team_id']))) {
+    if (isset($_POST['edit_team_id']) && isset($_POST['edit_team_name'])) {
+        $edit_team_id = $_POST['edit_team_id'];
+        $edit_team_name = $_POST['edit_team_name'];
+
+        // Check if the team name already exists
+        $check_stmt = $db->prepare('SELECT COUNT(*) FROM teams WHERE team_name = ? AND id != ?');
+        $check_stmt->execute([$edit_team_name, $edit_team_id]);
+        $exists = $check_stmt->fetchColumn();
+
+        if ($exists) {
+            $message = "Team " . htmlspecialchars($edit_team_name) . " already exists.";
+        } else {
+            $update_team_stmt = $db->prepare('UPDATE teams SET team_name = ? WHERE id = ?');
+            $update_team_stmt->execute([$edit_team_name, $edit_team_id]);
+            $message = "Team name updated successfully.";
+        }
+    } elseif (isset($_POST['delete_team_id'])) {
+        $delete_team_id = $_POST['delete_team_id'];
+        $delete_team_stmt = $db->prepare('DELETE FROM teams WHERE id = ?');
+        $delete_team_stmt->execute([$delete_team_id]);
+        $message = "Team deleted successfully.";
+    }
+
+    // Refresh the teams list after modifying a team
+    $teams_stmt = $db->query('SELECT * FROM teams');
+    $teams = $teams_stmt->fetchAll(PDO::FETCH_ASSOC);
+}
+
 // Handle form submission for managing user details
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['manage_user_id']) && isset($_POST['manage_username']) && isset($_POST['manage_email'])) {
     $manage_user_id = $_POST['manage_user_id'];
@@ -120,7 +192,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['manage_user_id']) && i
     $users_stmt = $db->query('SELECT u.id, u.username, u.team_id, t.team_name FROM users u LEFT JOIN teams t ON u.team_id = t.id ORDER BY u.username');
     $users = $users_stmt->fetchAll(PDO::FETCH_ASSOC);
 }
-
 // Handle form submission for creating a new team
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['team_name'])) {
     $new_team_name = $_POST['team_name'];
@@ -138,22 +209,14 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['team_name'])) {
         $insert_team_stmt->execute([$new_team_name]);
         $team_id = $db->lastInsertId();
 
-        // Insert draft picks for the next two years (10 rounds each year)
-        $current_year = date('Y');
-        for ($year = $current_year; $year <= $current_year + 1; $year++) {
-            for ($round = 1; $round <= 10; $round++) {
-                $insert_draft_pick_stmt = $db->prepare('INSERT INTO draft_picks (team_id, round, year) VALUES (?, ?, ?)');
-                $insert_draft_pick_stmt->execute([$team_id, $round, $year]);
-            }
-        }
-
-        $message = "Team " . htmlspecialchars($new_team_name) . " has been added with draft picks for the next two years.";
+        $message = "Team " . htmlspecialchars($new_team_name) . " has been added.";
 
         // Refresh the teams list after adding a new team
         $teams_stmt = $db->query('SELECT * FROM teams');
         $teams = $teams_stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 }
+
 // Handle form submission for creating a new user
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['new_username']) && isset($_POST['new_email']) && isset($_POST['new_password'])) {
     $new_username = $_POST['new_username'];
@@ -217,7 +280,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['reset_draft'])) {
         $message = "Failed to reset draft: " . $e->getMessage();
     }
 }
-
 // Handle database initialization
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['confirm_init']) && $_POST['confirm_init'] === 'YES') {
     try {
@@ -250,14 +312,36 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['confirm_init']) && $_P
         session_destroy();
         header('Location: login.php?message=' . urlencode($message));
         exit;
-
     } catch (PDOException $e) {
         // Rollback transaction if an error occurs
         $db->rollBack();
         $message = "Failed to initialize database: " . $e->getMessage();
     }
 }
+
+// Handle database backup
+if (isset($_GET['backup']) && $_GET['backup'] == 'true') {
+    $dbFile = '/var/www/stratroster/stratroster.db'; // Path to your SQLite database file
+    $backupFile = 'stratroster_backup_' . date('Y-m-d_H-i-s') . '.db'; // Backup file name with timestamp
+
+    if (file_exists($dbFile)) {
+        error_log("File exists: $dbFile");
+        header('Content-Description: File Transfer');
+        header('Content-Type: application/octet-stream');
+        header('Content-Disposition: attachment; filename=' . basename($backupFile));
+        header('Expires: 0');
+        header('Cache-Control: must-revalidate');
+        header('Pragma: public');
+        header('Content-Length: ' . filesize($dbFile));
+        readfile($dbFile);
+        exit;
+    } else {
+        $message = "Failed to find the database file.";
+        error_log("File not found: $dbFile");
+    }
+}
 ?>
+
 <!DOCTYPE html>
 <html>
 <head>
@@ -332,33 +416,23 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['confirm_init']) && $_P
             <button type="submit">Add Team</button>
         </form>
     </div>
-
     <div class="form-container">
-        <h3>Edit or Remove Team</h3>
+        <h3>Edit League Properties</h3>
         <form method="POST">
-            <label for="edit_team_id">Select Team:</label>
-            <select id="edit_team_id" name="edit_team_id" onchange="this.form.submit()">
-                <option value="">Select a team</option>
-                <?php foreach ($teams as $team): ?>
-                    <option value="<?= $team['id'] ?>"><?= htmlspecialchars($team['team_name']) ?></option>
-                <?php endforeach; ?>
-            </select>
+            <label for="league_name">League Name:</label>
+            <input type="text" id="league_name" name="league_name" value="<?= htmlspecialchars($league['name']) ?>" required>
+
+            <label for="draft_year">First Draft Year:</label>
+            <input type="radio" id="current_year" name="draft_year" value="<?= $current_year ?>" checked>
+            <label for="current_year"><?= $current_year ?></label>
+            <input type="radio" id="next_year" name="draft_year" value="<?= $current_year + 1 ?>">
+            <label for="next_year"><?= $current_year + 1 ?></label>
+
+            <label for="draft_rounds">Draft Rounds:</label>
+            <input type="number" id="draft_rounds" name="draft_rounds" value="<?= htmlspecialchars($league['draft_rounds']) ?>" min="1" max="20" required>
+
+            <button type="submit">Apply</button>
         </form>
-        <?php if (isset($_POST['edit_team_id']) && $_POST['edit_team_id'] != ''): ?>
-            <form method="POST">
-                <input type="hidden" name="edit_team_id" value="<?= $_POST['edit_team_id'] ?>">
-                <label for="edit_team_name">Edit Team Name:</label>
-                <input type="text" id="edit_team_name" name="edit_team_name" value="<?= htmlspecialchars($teams[array_search($_POST['edit_team_id'], array_column($teams, 'id'))]['team_name']) ?>" required>
-                <button type="submit">Save Changes</button>
-            </form>
-            <form method="POST">
-                <input type="hidden" name="delete_team_id" value="<?= $_POST['edit_team_id'] ?>">
-                <button type="submit" style="background-color: red; color: white;">Delete Team</button>
-            </form>
-        <?php endif; ?>
-        <?php if (isset($message) && $message != ''): ?>
-            <p class="success"><?= $message ?></p>
-        <?php endif; ?>
     </div>
 
     <div class="form-container">
@@ -392,10 +466,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['confirm_init']) && $_P
                 <button type="submit">Save Changes</button>
             </form>
         <?php endif; ?>
-        <?php if (isset($message) && $message != ''): ?>
-            <p class="success"><?= $message ?></p>
-        <?php endif; ?>
     </div>
+
     <div class="form-container">
         <h3>Create New User</h3>
         <form method="POST">
@@ -411,17 +483,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['confirm_init']) && $_P
         </form>
     </div>
 
-    <!-- League Name Edit -->
-    <div class="form-container">
-        <h3>Edit League Name</h3>
-        <form method="POST">
-            <label for="league_name">League Name:</label>
-            <input type="text" id="league_name" name="league_name" value="<?= htmlspecialchars($league['name']) ?>" required>
-            <button type="submit">Update League Name</button>
-        </form>
-    </div>
-
-    <!-- Backup Database Section -->
     <div class="form-container">
         <h3>Backup Database</h3>
         <form method="GET">
@@ -449,5 +510,136 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['confirm_init']) && $_P
     <p><a href="dashboard.php">Back to Dashboard</a></p>
 </body>
 </html>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const userHasTeam = <?= json_encode($user_has_team) ?>;
+    console.log('User has team:', userHasTeam); // Debugging output
 
+    // Display error message if user has no team assigned
+    if (!userHasTeam) {
+        const errorMessage = document.createElement('h2');
+        errorMessage.style.color = 'red';
+        errorMessage.textContent = 'No team assigned. Changes will not be saved.';
+        document.body.insertBefore(errorMessage, document.body.firstChild);
+    }
+
+    document.getElementById('deleteButton').addEventListener('click', function () {
+        if (!userHasTeam) {
+            alert('No team assigned. Changes will not be saved.');
+            return;
+        }
+
+        const deletePlayerId = document.getElementById('delete_player_id').value;
+        const firstName = document.getElementById('first_name').value;
+        const lastName = document.getElementById('last_name').value;
+
+        // Perform AJAX request
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', 'player_form.php', true);
+        xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+        xhr.onreadystatechange = function () {
+            if (xhr.readyState === 4 && xhr.status === 200) {
+                if (xhr.responseText.includes('successfully')) {
+                    alert(`Player ${firstName} ${lastName} deleted successfully.`);
+                    location.reload(); // Reload the page to refresh the roster list
+                } else {
+                    alert('Failed to delete player.');
+                }
+            }
+        };
+        xhr.send('delete_player=1&delete_player_id=' + deletePlayerId);
+    });
+
+    const roster = <?= json_encode($roster) ?>;
+    loadRoster(roster);
+});
+
+function loadRoster(roster) {
+    const positions = ['C', 'IF', 'OF', 'DH', 'P'];
+    positions.forEach(position => {
+        const element = document.getElementById(position);
+        if (element) {
+            element.innerHTML = ''; // Clear existing list
+        }
+    });
+
+    roster.forEach(player => {
+        const tr = document.createElement('tr');
+        const tdName = document.createElement('td');
+        const tdTeam = document.createElement('td');
+        tdName.innerText = formatPlayerName(player);
+        tdTeam.innerText = player.team;
+        tr.appendChild(tdName);
+        tr.appendChild(tdTeam);
+        tr.addEventListener('click', function () {
+            populateForm(player);
+        });
+
+        let position = '';
+        if (player.is_catcher) position = 'C';
+        else if (player.is_infielder) position = 'IF';
+        else if (player.is_outfielder) position = 'OF';
+        else if (player.is_dh) position = 'DH';
+        else if (player.is_pitcher) position = 'P';
+
+        const element = document.getElementById(position);
+        if (element) {
+            element.appendChild(tr);
+        }
+    });
+}
+
+function formatPlayerName(player) {
+    let name = player.first_name + ' ' + player.last_name;
+    if (player.bats === 'L' && !player.is_pitcher || (player.is_pitcher && player.throws === 'L')) {
+        name += ' *'; // Add space before the asterisk for left-handed bats/throws
+    }
+    if (player.bats === 'S' && !player.is_pitcher) {
+        name += ' @'; // Add space before the at symbol for switch hitters
+    }
+    if (player.no_card === 1) {
+        name += ' ‡'; // Add double cross symbol for no-card players
+    }
+    return name;
+}
+
+function populateForm(player) {
+    document.getElementById('first_name').value = player.first_name;
+    document.getElementById('last_name').value = player.last_name;
+    document.getElementById('team').value = player.team;
+    document.getElementById('bats').value = player.bats;
+    document.getElementById('throws').value = player.throws;
+    document.getElementById('position').value = player.is_catcher ? 'C' : player.is_infielder ? 'IF' : player.is_outfielder ? 'OF' : player.is_dh ? 'DH' : player.is_pitcher ? 'P' : '';
+    document.getElementById('no_card').checked = player.no_card === 1;
+    document.getElementById('submit-btn').innerText = 'Add/Edit Player';
+    document.getElementById('delete_player_id').value = player.id; // Set player ID for deletion
+
+    console.log('delete_player_id set to:', player.id); // Log the value
+}
+
+function toggleRequired() {
+    const csvFile = document.getElementById('csv_file');
+    const firstName = document.getElementById('first_name');
+    const lastName = document.getElementById('last_name');
+    const team = document.getElementById('team');
+    const bats = document.getElementById('bats');
+    const throws = document.getElementById('throws');
+    const position = document.getElementById('position');
+    if (csvFile.files.length > 0) {
+        firstName.required = false;
+        lastName.required = false;
+        team.required = false;
+        bats.required = false;
+        throws.required = false;
+        position.required = false;
+    } else {
+        firstName.required = true;
+        lastName.required = true;
+        team.required = true;
+        bats.required = true;
+        throws.required = true;
+        position.required = true;
+    }
+}
+</script>
 
