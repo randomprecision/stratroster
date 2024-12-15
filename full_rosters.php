@@ -19,6 +19,18 @@ $players = $players_stmt->fetchAll(PDO::FETCH_ASSOC);
 $draft_picks_stmt = $db->query('SELECT * FROM draft_picks ORDER BY year, round');
 $draft_picks = $draft_picks_stmt->fetchAll(PDO::FETCH_ASSOC);
 
+// Fetch users (managers) with their team ID
+$users_stmt = $db->query('SELECT id, team_id, email FROM users');
+$users = $users_stmt->fetchAll(PDO::FETCH_ASSOC);
+
+// Create a map of email addresses by team ID
+$team_emails = [];
+foreach ($users as $user) {
+    if ($user['team_id']) {
+        $team_emails[$user['team_id']] = $user['email'];
+    }
+}
+
 $team_players = [];
 $team_player_counts = [];
 foreach ($players as $player) {
@@ -82,7 +94,6 @@ function format_draft_picks($picks, $team_name) {
     return implode(', ', $ranges);
 }
 ?>
-
 <!DOCTYPE html>
 <html>
 <head>
@@ -141,6 +152,9 @@ function format_draft_picks($picks, $team_name) {
         <?php foreach ($teams as $team): ?>
             <div class="team">
                 <h2><?= htmlspecialchars($team['team_name']) ?></h2>
+                <?php if (isset($team_emails[$team['id']])): ?>
+                    <p><a href="mailto:<?= htmlspecialchars($team_emails[$team['id']]) ?>">E-mail <?= htmlspecialchars($team['team_name']) ?> manager</a></p>
+                <?php endif; ?>
 
                 <h3>Catchers</h3>
                 <ul>
