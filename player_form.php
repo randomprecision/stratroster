@@ -3,7 +3,7 @@
 // player_form.php - form for managers to add players to their teams
 
 session_start();
-$db = new PDO("sqlite:/var/www/stratroster/stratroster.db");
+$db = new PDO("sqlite:./stratroster.db");
 
 if (!isset($_SESSION['user_id'])) {
     die("User is not logged in.");

@@ -1,6 +1,6 @@
 <?php
 session_start();
-$db = new PDO("sqlite:/var/www/stratroster/stratroster.db");
+$db = new PDO("sqlite:./stratroster.db");
 
 // Ensure the user is an admin
 if (!isset($_SESSION['is_admin']) || !$_SESSION['is_admin']) {

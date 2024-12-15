@@ -3,7 +3,7 @@
 // admin.php - the admin page for doing admin things
 
 session_start();
-$db = new PDO("sqlite:/var/www/stratroster/stratroster.db");
+$db = new PDO("sqlite:./stratroster.db");
 
 if (!isset($_SESSION['user_id']) || $_SESSION['is_admin'] != 1) {
     header('Location: login.php');
@@ -321,7 +321,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['confirm_init']) && $_P
 
 // Handle database backup
 if (isset($_GET['backup']) && $_GET['backup'] == 'true') {
-    $dbFile = '/var/www/stratroster/stratroster.db'; // Path to your SQLite database file
+    $dbFile = './stratroster.db'; // Path to your SQLite database file
     $backupFile = 'stratroster_backup_' . date('Y-m-d_H-i-s') . '.db'; // Backup file name with timestamp
 
     if (file_exists($dbFile)) {

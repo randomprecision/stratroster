@@ -1,6 +1,6 @@
 <?php
 session_start();
-$db = new PDO("sqlite:/var/www/stratroster/stratroster.db");
+$db = new PDO("sqlite:./stratroster.db");
 
 // Ensure the user is logged in
 if (!isset($_SESSION['user_id'])) {

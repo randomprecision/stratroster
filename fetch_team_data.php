@@ -1,6 +1,6 @@
 <?php
 header('Content-Type: application/json');
-$db = new PDO("sqlite:/var/www/stratroster/stratroster.db");
+$db = new PDO("sqlite:./stratroster.db");
 
 $team_id = $_GET['team_id'];
 

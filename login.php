@@ -1,6 +1,6 @@
 <?php
 session_start();
-$db = new PDO("sqlite:/var/www/stratroster/stratroster.db");
+$db = new PDO("sqlite:./stratroster.db");
 
 // Fetch league properties
 $league_stmt = $db->prepare('SELECT * FROM league_properties');
