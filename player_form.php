@@ -1,20 +1,21 @@
 <?php
+
+// player_form.php - form for managers to add players to their teams
+
 session_start();
 $db = new PDO("sqlite:/var/www/stratroster/stratroster.db");
 
-// Ensure the user is logged in
 if (!isset($_SESSION['user_id'])) {
-    header('Location: login.php');
-    exit;
+    die("User is not logged in.");
 }
 
-// Fetch the user details
 $user_id = $_SESSION['user_id'];
 $user_stmt = $db->prepare('SELECT * FROM users WHERE id = ?');
 $user_stmt->execute([$user_id]);
 $user = $user_stmt->fetch(PDO::FETCH_ASSOC);
 
-$team_assigned = isset($user['team_id']) && $user['team_id'] !== null; $error_message = !$team_assigned ? "You do not have a team assigned. Changes will not be saved." : "";
+$team_assigned = isset($user['team_id']) && $user['team_id'] !== null && $user['team_id'] > 0;
+$user_has_team = $team_assigned ? true : false;
 
 // Define MLB teams
 $mlb_teams = [
@@ -24,7 +25,7 @@ $mlb_teams = [
     "NL East" => ["ATL", "MIA", "NYN", "PHI", "WAS"],
     "NL Central" => ["CHN", "CIN", "MIL", "PIT", "STL"],
     "NL West" => ["ARI", "COL", "LAN", "SDN", "SFN"],
-    "Other" => ["IL"]
+    "Other" => ["IL", "FA"]
 ];
 
 // Handle form submission for deleting a player
@@ -360,7 +361,7 @@ function formatPlayerName($player) {
 
 <script>
 document.addEventListener('DOMContentLoaded', function () {
-    const userHasTeam = <?= json_encode($user_has_team) ?>; // This should be set based on your server-side logic
+    const userHasTeam = <?= json_encode($user_has_team) ?>;
 
     // Display error message if user has no team assigned
     if (!userHasTeam) {
@@ -489,3 +490,4 @@ function toggleRequired() {
     }
 }
 </script>
+
