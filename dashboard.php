@@ -2,6 +2,12 @@
 session_start();
 $db = new PDO("sqlite:./stratroster.db");
 
+// Fetch the background color
+
+$league_stmt = $db->query('SELECT background_color FROM league_properties LIMIT 1');
+$league = $league_stmt->fetch(PDO::FETCH_ASSOC);
+$background_color = $league['background_color'];
+
 // Ensure the user is logged in
 if (!isset($_SESSION['user_id'])) {
     header('Location: login.php');
@@ -27,7 +33,8 @@ $is_admin = $user['is_admin'];
     <title>Dashboard</title>
     <style>
         body {
-            font-family: monospace;
+	    background-color: <?= htmlspecialchars($background_color) ?>;
+	    font-family: monospace;
             display: flex;
             justify-content: center;
             align-items: center;

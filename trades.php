@@ -56,11 +56,16 @@ function fetch_trade_details($ids, $type) {
             return $item['first_name'] . ' ' . $item['last_name'];
         }, $details);
     } elseif ($type == 'draft_pick') {
-        $stmt = $db->prepare('SELECT id, round, original_team_id FROM draft_picks WHERE id IN (' . implode(',', array_fill(0, count($ids), '?')) . ')');
+        $stmt = $db->prepare('SELECT id, round, year, original_team_id, team_id FROM draft_picks WHERE id IN (' . implode(',', array_fill(0, count($ids), '?')) . ')');
         $stmt->execute($ids);
         $details = $stmt->fetchAll(PDO::FETCH_ASSOC);
         return array_map(function($item) use ($team_names) {
-            return $team_names[$item['original_team_id']] . ' round ' . $item['round'];
+            $original_team_name = isset($team_names[$item['original_team_id']]) 
+                                  ? $team_names[$item['original_team_id']] 
+                                  : (isset($team_names[$item['team_id']]) 
+                                     ? $team_names[$item['team_id']] 
+                                     : 'Unknown');
+            return $original_team_name . ' round ' . $item['round'];
         }, $details);
     }
 }
@@ -153,14 +158,14 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 <head>
     <title>Trade Players and Draft Picks</title>
     <style>
-	body {
-	    background-color: <?= htmlspecialchars($background_color) ?>;
+        body {
+            background-color: <?= htmlspecialchars($background_color) ?>;
             font-family: monospace;
-	}
-	.center {
-    	text-align: center;
-    	margin-top: 20px;
-	}
+        }
+        .center {
+        text-align: center;
+        margin-top: 20px;
+        }
         .team-section {
             display: flex;
             flex-direction: column;
@@ -284,7 +289,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             </tbody>
         </table>
     </div>
-	<p class="center"><a href="dashboard.php">Back to Dashboard</a></p>
+        <p class="center"><a href="dashboard.php">Back to Dashboard</a></p>
 
 <script>
     const teams = <?= json_encode($teams) ?>.reduce((acc, team) => {
@@ -313,102 +318,99 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         teamBHeader.textContent = teamName;
         fetchPlayersAndPicks(teamBSelect.value, 'team_b');
     });
+function fetchPlayersAndPicks(teamId, team) {
+    fetch(`fetch_team_data.php?team_id=${teamId}`)
+        .then(response => response.json())
+        .then(data => {
+            const playersList = team === 'team_a' ? teamAPlayersList : teamBPlayersList;
+            const draftPicksList = team === 'team_a' ? teamADraftPicksList : teamBDraftPicksList;
 
-    function fetchPlayersAndPicks(teamId, team) {
-        fetch(`fetch_team_data.php?team_id=${teamId}`)
-            .then(response => response.json())
-            .then(data => {
-                const playersList = team === 'team_a' ? teamAPlayersList : teamBPlayersList;
-                const draftPicksList = team === 'team_a' ? teamADraftPicksList : teamBDraftPicksList;
+            // Sort players alphabetically by last name
+            data.players.sort((a, b) => a.last_name.localeCompare(b.last_name));
 
-                // Sort players alphabetically by last name
-                data.players.sort((a, b) => a.last_name.localeCompare(b.last_name));
+            playersList.innerHTML = '';
+            data.players.forEach(player => {
+                const div = document.createElement('div');
+                div.classList.add('selectable-box');
+                div.dataset.id = player.id;
+                div.dataset.type = 'player';
+                div.dataset.team = team;
+                let name = `${player.first_name} ${player.last_name}`;
+                if (player.is_pitcher && player.throws === 'L') {
+                    name += '*';
+                } else if (!player.is_pitcher && player.bats === 'L') {
+                    name += '*';
+                } else if (!player.is_pitcher && player.bats === 'S') {
+                    name += '@';
+                }
+                if (player.no_card === 1) {
+                    name += '‡';
+                }
+                div.textContent = name;
+                div.onclick = toggleSelection;
+                playersList.appendChild(div);
+            });
 
-                playersList.innerHTML = '';
-                data.players.forEach(player => {
-                    const div = document.createElement('div');
-                    div.classList.add('selectable-box');
-                    div.dataset.id = player.id;
-                    div.dataset.type = 'player';
-                    div.dataset.team = team;
-                    let name = `${player.first_name} ${player.last_name}`;
-                    if (player.is_pitcher && player.throws === 'L') {
-                        name += '*';
-                    } else if (!player.is_pitcher && player.bats === 'L') {
-                        name += '*';
-                    } else if (!player.is_pitcher && player.bats === 'S') {
-                        name += '@';
-                    }
-                    if (player.no_card === 1) {
-                        name += '‡';
-                    }
-                    div.textContent = name;
-                    div.onclick = toggleSelection;
-                    playersList.appendChild(div);
-                });
+            draftPicksList.innerHTML = '';
+            data.draft_picks.forEach(pick => {
+                const div = document.createElement('div');
+                div.classList.add('selectable-box');
+                div.dataset.id = pick.id;
+                div.dataset.type = 'draft_pick';
+                div.dataset.team = team;
+                const originalTeamName = teams[pick.original_team_id] ? teams[pick.original_team_id].team_name : teams[teamId].team_name;
+                div.textContent = `Round ${pick.round}, Year ${pick.year} (${originalTeamName})`;
+                div.onclick = toggleSelection;
+                draftPicksList.appendChild(div);
+            });
+        })
+        .catch(error => console.error('Error fetching data:', error));
+}
 
-                draftPicksList.innerHTML = '';
-                data.draft_picks.forEach(pick => {
-                    const div = document.createElement('div');
-                    div.classList.add('selectable-box');
-                    div.dataset.id = pick.id;
-                    div.dataset.type = 'draft_pick';
-                    div.dataset.team = team;
-                    const originalTeamName = teams[pick.original_team_id] ? teams[pick.original_team_id].team_name : 'Unknown';
-                    div.textContent = `Round ${pick.round}, Year ${pick.year} (${originalTeamName})`;
-                    div.onclick = toggleSelection;
-                    draftPicksList.appendChild(div);
-                });
-            })
-            .catch(error => console.error('Error fetching data:', error));
-    }
-
-    function toggleSelection(event) {
-        const element = event.target;
-        element.classList.toggle('selected');
-        const selected = element.classList.contains('selected');
-        const input = document.querySelector(`input[name="${element.dataset.team}_${element.dataset.type}[]"][value="${element.dataset.id}"]`);
-        if (selected && !input) {
-            const hiddenInput = document.createElement('input');
-            hiddenInput.type = 'hidden';
-            hiddenInput.name = `${element.dataset.team}_${element.dataset.type}[]`;
-            hiddenInput.value = element.dataset.id;
-            if (tradeForm) {
-                tradeForm.appendChild(hiddenInput);
-            } else {
-                console.error('Form not found');
-            }
-        } else if (!selected && input) {
-            if (tradeForm) {
-                tradeForm.removeChild(input);
-            } else {
-                console.error('Form not found');
-            }
+function toggleSelection(event) {
+    const element = event.target;
+    element.classList.toggle('selected');
+    const selected = element.classList.contains('selected');
+    const input = document.querySelector(`input[name="${element.dataset.team}_${element.dataset.type}[]"][value="${element.dataset.id}"]`);
+    if (selected && !input) {
+        const hiddenInput = document.createElement('input');
+        hiddenInput.type = 'hidden';
+        hiddenInput.name = `${element.dataset.team}_${element.dataset.type}[]`;
+        hiddenInput.value = element.dataset.id;
+        if (tradeForm) {
+            tradeForm.appendChild(hiddenInput);
+        } else {
+            console.error('Form not found');
+        }
+    } else if (!selected && input) {
+        if (tradeForm) {
+            tradeForm.removeChild(input);
+        } else {
+            console.error('Form not found');
         }
     }
+}
 
-    // Handle form submission
-    tradeForm.addEventListener('submit', function(event) {
-        event.preventDefault(); // Prevent the default form submission
-        
-        // Build the confirmation message
-        const teamAPlayers = Array.from(document.querySelectorAll('.selectable-box[data-team="team_a"].selected')).map(box => box.textContent).join(', ');
-        const teamBPlayers = Array.from(document.querySelectorAll('.selectable-box[data-team="team_b"].selected')).map(box => box.textContent).join(', ');
+tradeForm.addEventListener('submit', function(event) {
+    event.preventDefault(); // Prevent the default form submission
 
-        const confirmationMessage = `Are you sure you want to confirm this trade?\n\nTeam A: ${teamAPlayers}\n\nTeam B: ${teamBPlayers}`;
-        
-        if (confirm(confirmationMessage)) {
-            // If confirmed, submit the form
-            const confirmInput = document.createElement('input');
-            confirmInput.type = 'hidden';
-            confirmInput.name = 'confirm_trade';
-            confirmInput.value = '1';
-            tradeForm.appendChild(confirmInput);
-            tradeForm.submit();
-        }
-    });
+    // Build the confirmation message
+    const teamAPlayers = Array.from(document.querySelectorAll('.selectable-box[data-team="team_a"].selected')).map(box => box.textContent).join(', ');
+    const teamBPlayers = Array.from(document.querySelectorAll('.selectable-box[data-team="team_b"].selected')).map(box => box.textContent).join(', ');
 
-    // Handle rollback of trades
+    const confirmationMessage = `Are you sure you want to confirm this trade?\n\nTeam A: ${teamAPlayers}\n\nTeam B: ${teamBPlayers}`;
+
+    if (confirm(confirmationMessage)) {
+        // If confirmed, submit the form
+        const confirmInput = document.createElement('input');
+        confirmInput.type = 'hidden';
+        confirmInput.name = 'confirm_trade';
+        confirmInput.value = '1';
+        tradeForm.appendChild(confirmInput);
+        tradeForm.submit();
+    }
+});
+
 function rollbackTrade(tradeId) {
     if (confirm('Are you sure you want to rollback this trade?')) {
         fetch(`rollback_trade.php?trade_id=${tradeId}`)
@@ -424,8 +426,9 @@ function rollbackTrade(tradeId) {
             .catch(error => console.error('Error rolling back trade:', error));
     }
 }
+
+
 </script>
 
 </body>
 </html>
-
