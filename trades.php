@@ -2,6 +2,12 @@
 session_start();
 $db = new PDO("sqlite:./stratroster.db");
 
+// Fetch the background color
+
+$league_stmt = $db->query('SELECT background_color FROM league_properties LIMIT 1');
+$league = $league_stmt->fetch(PDO::FETCH_ASSOC);
+$background_color = $league['background_color'];
+
 // Ensure the user is an admin
 if (!isset($_SESSION['is_admin']) || !$_SESSION['is_admin']) {
     header('Location: login.php');
@@ -146,8 +152,9 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 <html>
 <head>
     <title>Trade Players and Draft Picks</title>
-    <style>
-        body {
+    <style>background-color: <?= htmlspecialchars($background_color) ?>;
+	body {
+	    
             font-family: monospace;
 	}
 	.center {

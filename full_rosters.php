@@ -1,6 +1,12 @@
 <?php
 $db = new PDO("sqlite:./stratroster.db");
 
+// Fetch the background color
+
+$league_stmt = $db->query('SELECT background_color FROM league_properties LIMIT 1');
+$league = $league_stmt->fetch(PDO::FETCH_ASSOC);
+$background_color = $league['background_color'];
+
 // Fetch all teams
 $teams_stmt = $db->query('SELECT * FROM teams ORDER BY team_name');
 $teams = $teams_stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -100,7 +106,8 @@ function format_draft_picks($picks, $team_name) {
 <head>
     <title>Full Rosters</title>
     <style>
-        body {
+	body {
+	    background-color: <?= htmlspecialchars($background_color) ?>;
             font-family: monospace;
             display: flex;
             flex-direction: column;

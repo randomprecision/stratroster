@@ -2,6 +2,12 @@
 session_start();
 $db = new PDO("sqlite:./stratroster.db");
 
+// Fetch the background color
+
+$league_stmt = $db->query('SELECT background_color FROM league_properties LIMIT 1');
+$league = $league_stmt->fetch(PDO::FETCH_ASSOC);
+$background_color = $league['background_color'];
+
 // Fetch league properties
 $league_stmt = $db->prepare('SELECT * FROM league_properties');
 $league_stmt->execute();
@@ -33,7 +39,9 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     <title>Login</title>
     <style>
         body {
-            font-family: monospace;
+
+	    background-color: <?= htmlspecialchars($background_color) ?>;
+	    font-family: monospace;
         }
         .container {
             width: 300px;

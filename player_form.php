@@ -5,6 +5,13 @@
 session_start();
 $db = new PDO("sqlite:./stratroster.db");
 
+// Fetch the background color
+
+$league_stmt = $db->query('SELECT background_color FROM league_properties LIMIT 1');
+$league = $league_stmt->fetch(PDO::FETCH_ASSOC);
+$background_color = $league['background_color'];
+
+
 if (!isset($_SESSION['user_id'])) {
     die("User is not logged in.");
 }
@@ -189,6 +196,8 @@ function formatPlayerName($player) {
     <title>Player Form</title>
     <style>
         body {
+	    
+	    background-color: <?= htmlspecialchars($background_color) ?>;
             font-family: monospace;
         }
         .center {
