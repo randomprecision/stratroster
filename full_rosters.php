@@ -1,5 +1,5 @@
 <?php
-$db = new PDO("sqlite:/var/www/stratroster/stratroster.db");
+$db = new PDO("sqlite:./stratroster.db");
 
 // Fetch all teams
 $teams_stmt = $db->query('SELECT * FROM teams ORDER BY team_name');
@@ -94,6 +94,7 @@ function format_draft_picks($picks, $team_name) {
     return implode(', ', $ranges);
 }
 ?>
+
 <!DOCTYPE html>
 <html>
 <head>
@@ -102,6 +103,7 @@ function format_draft_picks($picks, $team_name) {
         body {
             font-family: monospace;
             display: flex;
+            flex-direction: column;
             justify-content: center;
             align-items: center;
             height: 100vh;
@@ -116,7 +118,7 @@ function format_draft_picks($picks, $team_name) {
             border: 2px solid black;
             border-radius: 10px;
             background-color: #f9f9f9;
-            max-height: 90vh;
+            max-height: 80vh;
             overflow-y: auto;
         }
         .team {
@@ -142,7 +144,6 @@ function format_draft_picks($picks, $team_name) {
             margin: 5px 0;
         }
         .footer {
-            grid-column: 1 / -1;
             margin-top: 20px;
         }
     </style>
@@ -217,9 +218,9 @@ function format_draft_picks($picks, $team_name) {
                 <p>Total Players: <?= $team_player_counts[$team['id']]['total'] ?? 0 ?>, Total No Cards: <?= $team_player_counts[$team['id']]['no_cards'] ?? 0 ?></p>
             </div>
         <?php endforeach; ?>
-        <div class="footer">
-            <p><a href="dashboard.php">Back to Dashboard</a></p>
-        </div>
+    </div>
+    <div class="footer">
+        <p><a href="dashboard.php">Back to Dashboard</a></p>
     </div>
 </body>
 </html>
