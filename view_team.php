@@ -14,8 +14,11 @@ if (!isset($_SESSION['user_id'])) {
     exit;
 }
 
-// Fetch the user's team ID
-$user_stmt = $db->prepare('SELECT team_id FROM users WHERE id = ?');
+// Fetch the user's team ID and team name
+$user_stmt = $db->prepare('SELECT t.id as team_id, t.team_name as team_name
+                           FROM users u
+                           JOIN teams t ON u.team_id = t.id
+                           WHERE u.id = ?');
 $user_stmt->execute([$_SESSION['user_id']]);
 $user_team = $user_stmt->fetch(PDO::FETCH_ASSOC);
 
@@ -110,14 +113,13 @@ foreach ($players as $player) {
     $total_players++;
 }
 ?>
-
 <!DOCTYPE html>
 <html>
 <head>
     <title>View Team</title>
     <style>
         body {
-	    background-color: <?= htmlspecialchars($background_color) ?>;
+            background-color: <?= htmlspecialchars($background_color) ?>;
             font-family: 'Lato', sans-serif;
             display: flex;
             flex-direction: column;
@@ -125,6 +127,7 @@ foreach ($players as $player) {
             align-items: center;
             height: 100vh;
             margin: 0;
+            overflow: hidden; /* Prevent body scroll */
         }
         .team-container {
             text-align: center;
@@ -132,6 +135,8 @@ foreach ($players as $player) {
             border: 2px solid black;
             border-radius: 10px;
             background-color: #f9f9f9;
+            height: 80vh; /* Set the maximum height for the container */
+            overflow-y: auto; /* Enable vertical scrolling */
         }
         h3 {
             color: #333;
@@ -151,7 +156,7 @@ foreach ($players as $player) {
 </head>
 <body>
     <div class="team-container">
-        <h2>Your Team</h2>
+        <h2><?= htmlspecialchars($user_team['team_name']) ?></h2>
 
         <h3>Catchers</h3>
         <ul>
