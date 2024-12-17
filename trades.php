@@ -60,10 +60,10 @@ function fetch_trade_details($ids, $type) {
         $stmt->execute($ids);
         $details = $stmt->fetchAll(PDO::FETCH_ASSOC);
         return array_map(function($item) use ($team_names) {
-            $original_team_name = isset($team_names[$item['original_team_id']]) 
-                                  ? $team_names[$item['original_team_id']] 
-                                  : (isset($team_names[$item['team_id']]) 
-                                     ? $team_names[$item['team_id']] 
+            $original_team_name = isset($team_names[$item['original_team_id']])
+                                  ? $team_names[$item['original_team_id']]
+                                  : (isset($team_names[$item['team_id']])
+                                     ? $team_names[$item['team_id']]
                                      : 'Unknown');
             return $original_team_name . ' round ' . $item['round'];
         }, $details);
@@ -163,8 +163,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             font-family: 'Lato', sans-serif;
         }
         .center {
-        text-align: center;
-        margin-top: 20px;
+            text-align: center;
+            margin-top: 20px;
         }
         .team-section {
             display: flex;
@@ -201,6 +201,9 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         }
         .recent-trades-table th {
             background-color: #f0f0f0;
+        }
+        .recent-trades-table td {
+            background-color: #fff; /* Set the background color of the table data to white */
         }
         .team-container {
             display: flex;
@@ -290,7 +293,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         </table>
     </div>
         <p class="center"><a href="dashboard.php">Back to Dashboard</a></p>
-
+</body>
+</html>
 <script>
     const teams = <?= json_encode($teams) ?>.reduce((acc, team) => {
         acc[team.id] = team;
