@@ -3,7 +3,6 @@ session_start();
 $db = new PDO("sqlite:./stratroster.db");
 
 // Fetch the background color
-
 $league_stmt = $db->query('SELECT background_color FROM league_properties LIMIT 1');
 $league = $league_stmt->fetch(PDO::FETCH_ASSOC);
 $background_color = $league['background_color'];
@@ -40,7 +39,7 @@ $trades = $trades_stmt->fetchAll(PDO::FETCH_ASSOC);
 $teams_stmt = $db->query('SELECT id, team_name FROM teams');
 $teams = $teams_stmt->fetchAll(PDO::FETCH_KEY_PAIR);
 
-function fetch_trade_details($ids, $type) {
+function fetch_trade_details($ids, $type, $team_id) {
     global $db, $teams;
     if ($type == 'player') {
         $stmt = $db->prepare('SELECT first_name, last_name FROM players WHERE id IN (' . implode(',', array_fill(0, count($ids), '?')) . ')');
@@ -50,11 +49,11 @@ function fetch_trade_details($ids, $type) {
             return $item['first_name'] . ' ' . $item['last_name'];
         }, $details);
     } elseif ($type == 'draft_pick') {
-        $stmt = $db->prepare('SELECT round, original_team_id FROM draft_picks WHERE id IN (' . implode(',', array_fill(0, count($ids), '?')) . ')');
-        $stmt->execute($ids);
+        $stmt = $db->prepare('SELECT round, year, IFNULL(original_team_id, ?) AS original_team_id FROM draft_picks WHERE id IN (' . implode(',', array_fill(0, count($ids), '?')) . ')');
+        $stmt->execute(array_merge([$team_id], $ids));
         $details = $stmt->fetchAll(PDO::FETCH_ASSOC);
         return array_map(function($item) use ($teams) {
-            return $teams[$item['original_team_id']] . ' round ' . $item['round'];
+            return $teams[$item['original_team_id']] . ' ' . $item['year'] . ' round ' . $item['round'];
         }, $details);
     }
 }
@@ -66,8 +65,8 @@ function fetch_trade_details($ids, $type) {
     <title>Recent Trades</title>
     <style>
         body {
-	    background-color: <?= htmlspecialchars($background_color) ?>;
-	    font-family: 'Lato', sans-serif;
+            background-color: <?= htmlspecialchars($background_color) ?>;
+            font-family: 'Lato', sans-serif;
             display: flex;
             justify-content: center;
             align-items: center;
@@ -126,12 +125,12 @@ function fetch_trade_details($ids, $type) {
                     <strong><?= htmlspecialchars($trade['trade_date']) ?>:</strong>
                     <?php
                     $team_a_assets = array_filter([
-                        implode(', ', fetch_trade_details(json_decode($trade['team_a_players'], true), 'player')),
-                        implode(', ', fetch_trade_details(json_decode($trade['team_a_draft_picks'], true), 'draft_pick'))
+                        implode(', ', fetch_trade_details(json_decode($trade['team_a_players'], true), 'player', $trade['team_a_id'])),
+                        implode(', ', fetch_trade_details(json_decode($trade['team_a_draft_picks'], true), 'draft_pick', $trade['team_a_id']))
                     ]);
                     $team_b_assets = array_filter([
-                        implode(', ', fetch_trade_details(json_decode($trade['team_b_players'], true), 'player')),
-                        implode(', ', fetch_trade_details(json_decode($trade['team_b_draft_picks'], true), 'draft_pick'))
+                        implode(', ', fetch_trade_details(json_decode($trade['team_b_players'], true), 'player', $trade['team_b_id'])),
+                        implode(', ', fetch_trade_details(json_decode($trade['team_b_draft_picks'], true), 'draft_pick', $trade['team_b_id']))
                     ]);
 
                     echo htmlspecialchars($teams[$trade['team_a_id']]) . ' traded ' . implode(' and ', $team_a_assets) .
