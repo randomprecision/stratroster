@@ -12,12 +12,12 @@ if (!isset($_SESSION['user_id']) || $_SESSION['is_admin'] != 1) {
 
 $current_year = date("Y"); // Define current_year before using it
 
-// Fetch the background color from the league properties
+// Fetch current values for league properties
 $league_stmt = $db->query('SELECT background_color, name, draft_rounds, draft_year FROM league_properties LIMIT 1');
 $league = $league_stmt->fetch(PDO::FETCH_ASSOC);
 $background_color = isset($league['background_color']) ? $league['background_color'] : '#FFFFFF'; // Default to white if not set
 $league_name = isset($league['name']) ? $league['name'] : 'My League';
-$draft_rounds = isset($league['draft_rounds']) ? $league['draft_rounds'] : 1; // Default to 1 if not set
+$draft_rounds = isset($league['draft_rounds']) ? $league['draft_rounds'] : 10; // Default to 10 if not set
 $draft_year = isset($league['draft_year']) ? $league['draft_year'] : $current_year;
 
 // Fetch the list of teams
@@ -292,13 +292,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
        
     }
 }
-
-// Set default values if not set
-$league_name = $league['name'] ?? 'My League';
-$draft_year = $league['draft_year'] ?? date('Y');
-$draft_rounds = $league['draft_rounds'] ?? 10; // Default to 10 if not set
-$background_color = $league['background_color'] ?? '#FFFFFF'; // Default to white if not set
-
 
 // Handle form submission for assigning draft picks
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['assign_draft_pick'])) {
