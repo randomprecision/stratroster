@@ -41,6 +41,71 @@ $user = $user_stmt->fetch(PDO::FETCH_ASSOC);
 $team_assigned = isset($user['team_id']) && $user['team_id'] !== null && $user['team_id'] > 0;
 $user_has_team = $team_assigned ? true : false;
 
+// Set default values if not set
+$league_name = $league['name'] ?? 'My League';
+$draft_year = $league['draft_year'] ?? date('Y');
+$draft_rounds = $league['draft_rounds'] ?? 10; // Default to 10 if not set
+$background_color = $league['background_color'] ?? '#FFFFFF'; // Default to white if not set
+
+// Handle form submission for editing league properties
+if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['edit_league_properties'])) {
+    $league_name = $_POST['league_name'];
+    $draft_year = $_POST['draft_year'];
+    $draft_rounds = $_POST['draft_rounds'];
+    $background_color = $_POST['background_color'];
+
+    // Check for custom color
+    if ($background_color === 'custom') {
+        $custom_color = $_POST['custom_background_color'];
+        if (preg_match('/^[a-fA-F0-9]{6}$/', $custom_color)) {
+            $background_color = '#' . $custom_color;
+        } else {
+            $settings_message = "Invalid custom color. Please enter a valid 6-digit hex code.";
+        }
+    }
+
+    if (!isset($settings_message)) {
+        try {
+            // Update league properties in the database
+            $db->beginTransaction();
+            $update_league_properties_stmt = $db->prepare('UPDATE league_properties SET name = ?, draft_year = ?, draft_rounds = ?, background_color = ? WHERE id = 1');
+            $update_league_properties_stmt->execute([$league_name, $draft_year, $draft_rounds, $background_color]);
+
+            if ($update_league_properties_stmt->rowCount() > 0) {
+                $settings_message = "League properties updated successfully.";
+            } else {
+                $settings_message = "Error: No league properties were updated.";
+            }
+
+            $db->commit();
+        } catch (Exception $e) {
+            $db->rollBack();
+            $settings_message = "Error updating league properties: " . $e->getMessage();
+            error_log("Error updating league properties: " . $e->getMessage());
+        }
+
+        // Refresh the league properties after updating
+        $league_properties_stmt = $db->query('SELECT * FROM league_properties LIMIT 1');
+        $league_properties = $league_properties_stmt->fetch(PDO::FETCH_ASSOC);
+
+        // Update variables with refreshed values
+        $league_name = $league_properties['name'];
+        $draft_year = $league_properties['draft_year'];
+        $draft_rounds = $league_properties['draft_rounds'];
+        $background_color = $league_properties['background_color'];
+
+        echo "<div class='confirmation'>League properties applied successfully.</div>";
+    }
+}
+
+// Fetch current values for league properties
+$league_stmt = $db->query('SELECT background_color, name, draft_rounds, draft_year FROM league_properties LIMIT 1');
+$league = $league_stmt->fetch(PDO::FETCH_ASSOC);
+$background_color = isset($league['background_color']) ? $league['background_color'] : '#FFFFFF'; // Default to white if not set
+$league_name = isset($league['name']) ? $league['name'] : 'My League';
+$draft_rounds = isset($league['draft_rounds']) ? $league['draft_rounds'] : 10; // Default to 10 if not set
+$draft_year = isset($league['draft_year']) ? $league['draft_year'] : $current_year;
+
 // Handle form submission for adding a new team
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['add_team'])) {
     $new_team_name = trim($_POST['new_team_name']);
@@ -65,13 +130,23 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['add_team'])) {
                 $draft_year = $league['draft_year'];
                 $draft_rounds = $league['draft_rounds'];
 
-                // Insert draft picks for the new team for the next two years
-                $insert_draft_pick_stmt = $db->prepare('INSERT INTO draft_picks (team_id, round, year) VALUES (?, ?, ?)');
-                for ($year = $draft_year; $year <= $draft_year + 1; $year++) {
-                    for ($round = 1; $round <= $draft_rounds; $round++) {
-                        $insert_draft_pick_stmt->execute([$team_id, $round, $year]);
+                if ($draft_year && $draft_rounds) {
+                    // Insert draft picks for the new team for the next two years
+                    $insert_draft_pick_stmt = $db->prepare('INSERT INTO draft_picks (team_id, round, year) VALUES (?, ?, ?)');
+                    for ($year = $draft_year; $year <= $draft_year + 1; $year++) {
+                        for ($round = 1; $round <= $draft_rounds; $round++) {
+                            if (!$insert_draft_pick_stmt->execute([$team_id, $round, $year])) {
+                                $message .= " Error inserting draft pick for year $year and round $round.";
+                            }
+                        }
                     }
+                } else {
+                    $message = "Error: Invalid league properties.";
                 }
+
+                // Refresh the list of teams after adding a new team
+                $teams_stmt = $db->query('SELECT * FROM teams ORDER BY team_name');
+                $teams = $teams_stmt->fetchAll(PDO::FETCH_ASSOC);
             } else {
                 $message = "Error inserting the new team.";
             }
@@ -214,42 +289,16 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         $teams_stmt = $db->query('SELECT * FROM teams ORDER BY team_name');
         $teams = $teams_stmt->fetchAll(PDO::FETCH_ASSOC);
     } elseif (isset($_POST['edit_league_properties'])) {
-        // Handle form submission for editing league properties
-        $league_name = $_POST['league_name'];
-        $draft_year = $_POST['draft_year'];
-        $draft_rounds = $_POST['draft_rounds'];
-        $background_color = $_POST['background_color'];
-
-        // Update league properties in the database
-        $update_league_name_stmt = $db->prepare('UPDATE league_properties SET name = ? WHERE id = 1');
-        $update_league_name_stmt->execute([$league_name]);
-
-        $update_draft_year_stmt = $db->prepare('UPDATE league_properties SET draft_year = ? WHERE id = 1');
-        $update_draft_year_stmt->execute([$draft_year]);
-
-        $update_draft_rounds_stmt = $db->prepare('UPDATE league_properties SET draft_rounds = ? WHERE id = 1');
-        $update_draft_rounds_stmt->execute([$draft_rounds]);
-
-        $update_background_color_stmt = $db->prepare('UPDATE league_properties SET background_color = ? WHERE id = 1');
-        $update_background_color_stmt->execute([$background_color]);
-
-        $settings_message = "League properties updated successfully.";
-
-        // Refresh the league properties after updating
-        $league_properties_stmt = $db->query('SELECT * FROM league_properties');
-        $league_properties = $league_properties_stmt->fetchAll(PDO::FETCH_ASSOC);
-
-        // Update variables with refreshed values
-        foreach ($league_properties as $property) {
-            if ($property['id'] == 1) {
-                $league_name = $property['name'];
-                $draft_year = $property['draft_year'];
-                $draft_rounds = $property['draft_rounds'];
-                $background_color = $property['background_color'];
-            }
-        }
+       
     }
 }
+
+// Set default values if not set
+$league_name = $league['name'] ?? 'My League';
+$draft_year = $league['draft_year'] ?? date('Y');
+$draft_rounds = $league['draft_rounds'] ?? 10; // Default to 10 if not set
+$background_color = $league['background_color'] ?? '#FFFFFF'; // Default to white if not set
+
 
 // Handle form submission for assigning draft picks
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['assign_draft_pick'])) {
@@ -336,7 +385,7 @@ function backupSQLiteDatabase($db_path) {
 function initializeDatabase($db) {
     try {
         // List of tables to clear
-        $tables = ['teams', 'league_properties', 'draft_picks', 'users', 'players'];
+        $tables = ['teams', 'league_properties', 'draft_picks', 'users', 'players', 'trades', 'trade_log'];
 
         // Begin a transaction
         $db->beginTransaction();
@@ -346,6 +395,24 @@ function initializeDatabase($db) {
             $db->exec("DELETE FROM $table");
             $db->exec("DELETE FROM sqlite_sequence WHERE name='$table'");
         }
+
+        // Insert default league properties
+        $default_league_properties = [
+            'name' => 'My League',
+            'image' => null, // Assuming no default image
+            'draft_rounds' => 10,
+            'background_color' => '#FFFFFF',
+            'draft_year' => date('Y')
+        ];
+
+        $insert_league_properties_stmt = $db->prepare('INSERT INTO league_properties (name, image, draft_rounds, background_color, draft_year) VALUES (?, ?, ?, ?, ?)');
+        $insert_league_properties_stmt->execute([
+            $default_league_properties['name'],
+            $default_league_properties['image'],
+            $default_league_properties['draft_rounds'],
+            $default_league_properties['background_color'],
+            $default_league_properties['draft_year']
+        ]);
 
         // Insert the admin user with a hashed password and set ID to 1
         $admin_username = 'admin';
@@ -473,49 +540,68 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['confirm_init']) && $_P
         <button type="submit" name="add_team">Add Team</button>
     </form>
 </div>
-  <!-- Edit League Properties Section -->
-    <div class="form-container">
-        <h3>Edit League Properties</h3>
-        <?php if (isset($settings_message)): ?>
-            <p><?= htmlspecialchars($settings_message) ?></p>
-        <?php endif; ?>
-        <form method="POST" action="admin.php">
-            <label for="league_name">League Name:</label>
-            <input type="text" id="league_name" name="league_name" value="<?= htmlspecialchars($league_name) ?>" required>
 
-            <label for="draft_year">First Draft Year:</label>
-            <input type="radio" id="current_year" name="draft_year" value="<?= $current_year ?>" <?= $draft_year == $current_year ? 'checked' : '' ?>>
-            <label for="current_year"><?= $current_year ?></label>
-            <input type="radio" id="next_year" name="draft_year" value="<?= $current_year + 1 ?>" <?= $draft_year == $current_year + 1 ? 'checked' : '' ?>>
-            <label for="next_year"><?= $current_year + 1 ?></label>
+<!-- Edit League Properties Section -->
+<div class="form-container">
+    <h3>Edit League Properties</h3>
+    <?php if (isset($settings_message)): ?>
+        <p><?= htmlspecialchars($settings_message) ?></p>
+    <?php endif; ?>
+    <form method="POST" action="admin.php">
+        <label for="league_name">League Name:</label>
+        <input type="text" id="league_name" name="league_name" value="<?= htmlspecialchars($league_name) ?>" required>
 
-            <label for="draft_rounds">Draft Rounds:</label>
-            <input type="number" id="draft_rounds" name="draft_rounds" value="<?= htmlspecialchars($draft_rounds) ?>" min="1" max="20" required>
+        <label for="draft_year">First Draft Year:</label>
+        <input type="radio" id="current_year" name="draft_year" value="<?= $current_year ?>" <?= $draft_year == $current_year ? 'checked' : '' ?>>
+        <label for="current_year"><?= $current_year ?></label>
+        <input type="radio" id="next_year" name="draft_year" value="<?= $current_year + 1 ?>" <?= $draft_year == $current_year + 1 ? 'checked' : '' ?>>
+        <label for="next_year"><?= $current_year + 1 ?></label>
 
-            <label for="background_color">Background Color:</label>
-            <select id="background_color" name="background_color" required>
-                <option value="#FFB6C1" <?= $background_color == '#FFB6C1' ? 'selected' : '' ?>>Light Pink</option>
-                <option value="#FFD700" <?= $background_color == '#FFD700' ? 'selected' : '' ?>>Gold</option>
-                <option value="#ADFF2F" <?= $background_color == '#ADFF2F' ? 'selected' : '' ?>>Green Yellow</option>
-                <option value="#F0E68C" <?= $background_color == '#F0E68C' ? 'selected' : '' ?>>Khaki</option>
-                <option value="#D3D3D3" <?= $background_color == '#D3D3D3' ? 'selected' : '' ?>>Light Grey</option>
-                <option value="#B0C4DE" <?= $background_color == '#B0C4DE' ? 'selected' : '' ?>>Light Steel Blue</option>
-                <option value="#ADD8E6" <?= $background_color == '#ADD8E6' ? 'selected' : '' ?>>Light Blue</option>
-                <option value="#E6E6FA" <?= $background_color == '#E6E6FA' ? 'selected' : '' ?>>Lavender</option>
-                <option value="#FFE4E1" <?= $background_color == '#FFE4E1' ? 'selected' : '' ?>>Misty Rose</option>
-                <option value="#FAFAD2" <?= $background_color == '#FAFAD2' ? 'selected' : '' ?>>Light Goldenrod Yellow</option>
-                <option value="#98FB98" <?= $background_color == '#98FB98' ? 'selected' : '' ?>>Pale Green</option>
-                <option value="#FFFACD" <?= $background_color == '#FFFACD' ? 'selected' : '' ?>>Lemon Chiffon</option>
-                <option value="#F0FFF0" <?= $background_color == '#F0FFF0' ? 'selected' : '' ?>>Honeydew</option>
-                <option value="#FFF0F5" <?= $background_color == '#FFF0F5' ? 'selected' : '' ?>>Lavender Blush</option>
-                <option value="#E0FFFF" <?= $background_color == '#E0FFFF' ? 'selected' : '' ?>>Light Cyan</option>
-            </select>
+        <label for="draft_rounds">Draft Rounds:</label>
+        <input type="number" id="draft_rounds" name="draft_rounds" value="<?= htmlspecialchars($draft_rounds) ?>" min="1" max="20" required>
 
-            <button type="submit" name="edit_league_properties">Apply</button>
-        </form>
-    </div>
-</body>
-</html>
+        <label for="background_color">Background Color:</label>
+        <select id="background_color" name="background_color" onchange="toggleCustomColorInput(this.value)" required>
+            <option value="#FFB6C1" <?= $background_color == '#FFB6C1' ? 'selected' : '' ?>>Light Pink</option>
+            <option value="#FFD700" <?= $background_color == '#FFD700' ? 'selected' : '' ?>>Gold</option>
+            <option value="#ADFF2F" <?= $background_color == '#ADFF2F' ? 'selected' : '' ?>>Green Yellow</option>
+            <option value="#F0E68C" <?= $background_color == '#F0E68C' ? 'selected' : '' ?>>Khaki</option>
+            <option value="#D3D3D3" <?= $background_color == '#D3D3D3' ? 'selected' : '' ?>>Light Grey</option>
+            <option value="#B0C4DE" <?= $background_color == '#B0C4DE' ? 'selected' : '' ?>>Light Steel Blue</option>
+            <option value="#ADD8E6" <?= $background_color == '#ADD8E6' ? 'selected' : '' ?>>Light Blue</option>
+            <option value="#E6E6FA" <?= $background_color == '#E6E6FA' ? 'selected' : '' ?>>Lavender</option>
+            <option value="#FFE4E1" <?= $background_color == '#FFE4E1' ? 'selected' : '' ?>>Misty Rose</option>
+            <option value="#FAFAD2" <?= $background_color == '#FAFAD2' ? 'selected' : '' ?>>Light Goldenrod Yellow</option>
+            <option value="#98FB98" <?= $background_color == '#98FB98' ? 'selected' : '' ?>>Pale Green</option>
+            <option value="#FFFACD" <?= $background_color == '#FFFACD' ? 'selected' : '' ?>>Lemon Chiffon</option>
+            <option value="#F0FFF0" <?= $background_color == '#F0FFF0' ? 'selected' : '' ?>>Honeydew</option>
+            <option value="#FFF0F5" <?= $background_color == '#FFF0F5' ? 'selected' : '' ?>>Lavender Blush</option>
+            <option value="#E0FFFF" <?= $background_color == '#E0FFFF' ? 'selected' : '' ?>>Light Cyan</option>
+            <option value="#F8F8FF" <?= $background_color == '#F8F8FF' ? 'selected' : '' ?>>Ghost White</option>
+            <option value="#FFEFD5" <?= $background_color == '#FFEFD5' ? 'selected' : '' ?>>Papaya Whip</option>
+            <option value="#FFF5EE" <?= $background_color == '#FFF5EE' ? 'selected' : '' ?>>Seashell</option>
+            <option value="custom" <?= preg_match('/^#[a-fA-F0-9]{6}$/', $background_color) ? 'selected' : '' ?>>Custom</option>
+        </select>
+        <input type="text" id="custom_background_color" name="custom_background_color" placeholder="Enter hex code" style="display:none;" value="<?= preg_match('/^#[a-fA-F0-9]{6}$/', $background_color) ? htmlspecialchars(ltrim($background_color, '#')) : '' ?>">
+
+        <button type="submit" name="edit_league_properties">Apply</button>
+    </form>
+</div>
+
+<script>
+function toggleCustomColorInput(value) {
+    var customColorInput = document.getElementById('custom_background_color');
+    if (value === 'custom') {
+        customColorInput.style.display = 'inline';
+    } else {
+        customColorInput.style.display = 'none';
+    }
+}
+window.onload = function() {
+    toggleCustomColorInput(document.getElementById('background_color').value);
+};
+</script>
+
 <!-- Manage Users Section -->
 <div class="form-container">
     <h3>Manage Users</h3>
