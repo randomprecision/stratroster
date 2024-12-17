@@ -3,7 +3,6 @@ session_start();
 $db = new PDO("sqlite:./stratroster.db");
 
 // Fetch the background color
-
 $league_stmt = $db->query('SELECT background_color FROM league_properties LIMIT 1');
 $league = $league_stmt->fetch(PDO::FETCH_ASSOC);
 $background_color = $league['background_color'];
@@ -14,8 +13,8 @@ if (!isset($_SESSION['is_admin']) || !$_SESSION['is_admin']) {
     exit;
 }
 
-// Fetch all teams
-$teams_stmt = $db->query('SELECT * FROM teams');
+// Fetch all teams and sort them alphabetically by team name
+$teams_stmt = $db->query('SELECT * FROM teams ORDER BY team_name');
 $teams = $teams_stmt->fetchAll(PDO::FETCH_ASSOC);
 
 // Create a map of team names by team ID
@@ -56,20 +55,14 @@ function fetch_trade_details($ids, $type) {
             return $item['first_name'] . ' ' . $item['last_name'];
         }, $details);
     } elseif ($type == 'draft_pick') {
-        $stmt = $db->prepare('SELECT id, round, year, original_team_id, team_id FROM draft_picks WHERE id IN (' . implode(',', array_fill(0, count($ids), '?')) . ')');
+        $stmt = $db->prepare('SELECT id, round, year, IFNULL(original_team_id, team_id) AS original_team_id FROM draft_picks WHERE id IN (' . implode(',', array_fill(0, count($ids), '?')) . ')');
         $stmt->execute($ids);
         $details = $stmt->fetchAll(PDO::FETCH_ASSOC);
         return array_map(function($item) use ($team_names) {
-            $original_team_name = isset($team_names[$item['original_team_id']])
-                                  ? $team_names[$item['original_team_id']]
-                                  : (isset($team_names[$item['team_id']])
-                                     ? $team_names[$item['team_id']]
-                                     : 'Unknown');
-            return $original_team_name . ' round ' . $item['round'];
+            return $team_names[$item['original_team_id']] . ' round ' . $item['round'];
         }, $details);
     }
 }
-
 // Handle form submission
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     if (isset($_POST['confirm_trade'])) {
@@ -90,18 +83,12 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             $move_players_stmt->execute([$team_a_id, $player_id]);
         }
 
-        $move_draft_picks_stmt = $db->prepare('UPDATE draft_picks SET team_id = ?, original_team_id = ? WHERE id = ?');
+        $move_draft_picks_stmt = $db->prepare('UPDATE draft_picks SET team_id = ?, original_team_id = IFNULL(original_team_id, ?) WHERE id = ?');
         foreach ($team_a_draft_picks as $pick_id) {
-            $original_team_stmt = $db->prepare('SELECT original_team_id FROM draft_picks WHERE id = ?');
-            $original_team_stmt->execute([$pick_id]);
-            $original_team = $original_team_stmt->fetchColumn();
-            $move_draft_picks_stmt->execute([$team_b_id, $original_team, $pick_id]);
+            $move_draft_picks_stmt->execute([$team_b_id, $team_a_id, $pick_id]);
         }
         foreach ($team_b_draft_picks as $pick_id) {
-            $original_team_stmt = $db->prepare('SELECT original_team_id FROM draft_picks WHERE id = ?');
-            $original_team_stmt->execute([$pick_id]);
-            $original_team = $original_team_stmt->fetchColumn();
-            $move_draft_picks_stmt->execute([$team_a_id, $original_team, $pick_id]);
+            $move_draft_picks_stmt->execute([$team_a_id, $team_b_id, $pick_id]);
         }
 
         // Log the trade
