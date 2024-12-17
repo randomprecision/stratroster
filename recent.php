@@ -67,7 +67,7 @@ function fetch_trade_details($ids, $type) {
     <style>
         body {
 	    background-color: <?= htmlspecialchars($background_color) ?>;
-	    font-family: monospace;
+	    font-family: 'Lato', sans-serif;
             display: flex;
             justify-content: center;
             align-items: center;

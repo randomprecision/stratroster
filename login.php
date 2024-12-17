@@ -41,7 +41,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         body {
 
 	    background-color: <?= htmlspecialchars($background_color) ?>;
-	    font-family: monospace;
+	    font-family: 'Lato', sans-serif;
         }
         .container {
             width: 300px;

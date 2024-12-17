@@ -160,7 +160,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     <style>
         body {
             background-color: <?= htmlspecialchars($background_color) ?>;
-            font-family: monospace;
+            font-family: 'Lato', sans-serif;
         }
         .center {
         text-align: center;

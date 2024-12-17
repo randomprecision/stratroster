@@ -118,7 +118,7 @@ foreach ($players as $player) {
     <style>
         body {
 	    background-color: <?= htmlspecialchars($background_color) ?>;
-            font-family: monospace;
+            font-family: 'Lato', sans-serif;
             display: flex;
             flex-direction: column;
             justify-content: center;
