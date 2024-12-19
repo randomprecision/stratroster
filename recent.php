@@ -74,7 +74,7 @@ function fetch_trade_details($ids, $type, $team_id) {
             margin: 0;
         }
         .trades-container {
-            text-align: center;
+            text-align: left; /* Change text alignment to left */
             padding: 20px;
             border: 2px solid black;
             border-radius: 10px;
