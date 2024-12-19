@@ -63,6 +63,7 @@ function fetch_trade_details($ids, $type) {
         }, $details);
     }
 }
+
 // Handle form submission
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     if (isset($_POST['confirm_trade'])) {
@@ -171,9 +172,10 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             padding: 10px;
             margin-bottom: 10px;
             cursor: pointer;
+            background-color: white; /* Set background color to white */
         }
         .selectable-box.selected {
-            border-color: #000;
+            border-color: black; /* Add black border for selected items */
             background-color: #f0f0f0;
         }
         .recent-trades-table {
@@ -190,7 +192,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             background-color: #f0f0f0;
         }
         .recent-trades-table td {
-            background-color: #fff; /* Set the background color of the table data to white */
+            background-color: white; /* Set the background color of the table data to white */
         }
         .team-container {
             display: flex;
@@ -245,41 +247,40 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             </div>
         </div>
     </form>
-
-    <div id="recent-trades-container">
-        <h3>Recent Trades</h3>
-        <table class="recent-trades-table" id="recent-trades-table">
-            <thead>
+<div id="recent-trades-container">
+    <h3>Recent Trades</h3>
+    <table class="recent-trades-table" id="recent-trades-table">
+        <thead>
+            <tr>
+                <th>Trade ID</th>
+                <th>Team A</th>
+                <th>Team B</th>
+                <th>Team A Players</th>
+                <th>Team B Players</th>
+                <th>Team A Draft Picks</th>
+                <th>Team B Draft Picks</th>
+                <th>Trade Date</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            <?php foreach (get_recent_trades() as $trade): ?>
                 <tr>
-                    <th>Trade ID</th>
-                    <th>Team A</th>
-                    <th>Team B</th>
-                    <th>Team A Players</th>
-                    <th>Team B Players</th>
-                    <th>Team A Draft Picks</th>
-                    <th>Team B Draft Picks</th>
-                    <th>Trade Date</th>
-                    <th>Actions</th>
+                    <td><?= $trade['id'] ?></td>
+                    <td><?= htmlspecialchars($team_names[$trade['team_a_id']]) ?></td>
+                    <td><?= htmlspecialchars($team_names[$trade['team_b_id']]) ?></td>
+                    <td><?= htmlspecialchars(implode(', ', fetch_trade_details(json_decode($trade['team_a_players'], true), 'player'))) ?></td>
+                    <td><?= htmlspecialchars(implode(', ', fetch_trade_details(json_decode($trade['team_b_players'], true), 'player'))) ?></td>
+                    <td><?= htmlspecialchars(implode(', ', fetch_trade_details(json_decode($trade['team_a_draft_picks'], true), 'draft_pick'))) ?></td>
+                    <td><?= htmlspecialchars(implode(', ', fetch_trade_details(json_decode($trade['team_b_draft_picks'], true), 'draft_pick'))) ?></td>
+                    <td><?= htmlspecialchars($trade['trade_date']) ?></td>
+                    <td><button onclick="rollbackTrade(<?= $trade['id'] ?>)">Rollback</button></td>
                 </tr>
-            </thead>
-            <tbody>
-                <?php foreach (get_recent_trades() as $trade): ?>
-                    <tr>
-                        <td><?= $trade['id'] ?></td>
-                        <td><?= htmlspecialchars($team_names[$trade['team_a_id']]) ?></td>
-                        <td><?= htmlspecialchars($team_names[$trade['team_b_id']]) ?></td>
-                        <td><?= htmlspecialchars(implode(', ', fetch_trade_details(json_decode($trade['team_a_players'], true), 'player'))) ?></td>
-                        <td><?= htmlspecialchars(implode(', ', fetch_trade_details(json_decode($trade['team_b_players'], true), 'player'))) ?></td>
-                        <td><?= htmlspecialchars(implode(', ', fetch_trade_details(json_decode($trade['team_a_draft_picks'], true), 'draft_pick'))) ?></td>
-                        <td><?= htmlspecialchars(implode(', ', fetch_trade_details(json_decode($trade['team_b_draft_picks'], true), 'draft_pick'))) ?></td>
-                        <td><?= htmlspecialchars($trade['trade_date']) ?></td>
-                        <td><button onclick="rollbackTrade(<?= $trade['id'] ?>)">Rollback</button></td>
-                    </tr>
-                <?php endforeach; ?>
-            </tbody>
-        </table>
-    </div>
-        <p class="center"><a href="dashboard.php">Back to Dashboard</a></p>
+            <?php endforeach; ?>
+        </tbody>
+    </table>
+</div>
+<p class="center"><a href="dashboard.php">Back to Dashboard</a></p>
 </body>
 </html>
 <script>
@@ -309,117 +310,117 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         teamBHeader.textContent = teamName;
         fetchPlayersAndPicks(teamBSelect.value, 'team_b');
     });
-function fetchPlayersAndPicks(teamId, team) {
-    fetch(`fetch_team_data.php?team_id=${teamId}`)
-        .then(response => response.json())
-        .then(data => {
-            const playersList = team === 'team_a' ? teamAPlayersList : teamBPlayersList;
-            const draftPicksList = team === 'team_a' ? teamADraftPicksList : teamBDraftPicksList;
 
-            // Sort players alphabetically by last name
-            data.players.sort((a, b) => a.last_name.localeCompare(b.last_name));
-
-            playersList.innerHTML = '';
-            data.players.forEach(player => {
-                const div = document.createElement('div');
-                div.classList.add('selectable-box');
-                div.dataset.id = player.id;
-                div.dataset.type = 'player';
-                div.dataset.team = team;
-                let name = `${player.first_name} ${player.last_name}`;
-                if (player.is_pitcher && player.throws === 'L') {
-                    name += '*';
-                } else if (!player.is_pitcher && player.bats === 'L') {
-                    name += '*';
-                } else if (!player.is_pitcher && player.bats === 'S') {
-                    name += '@';
-                }
-                if (player.no_card === 1) {
-                    name += '‡';
-                }
-                div.textContent = name;
-                div.onclick = toggleSelection;
-                playersList.appendChild(div);
-            });
-
-            draftPicksList.innerHTML = '';
-            data.draft_picks.forEach(pick => {
-                const div = document.createElement('div');
-                div.classList.add('selectable-box');
-                div.dataset.id = pick.id;
-                div.dataset.type = 'draft_pick';
-                div.dataset.team = team;
-                const originalTeamName = teams[pick.original_team_id] ? teams[pick.original_team_id].team_name : teams[teamId].team_name;
-                div.textContent = `Round ${pick.round}, Year ${pick.year} (${originalTeamName})`;
-                div.onclick = toggleSelection;
-                draftPicksList.appendChild(div);
-            });
-        })
-        .catch(error => console.error('Error fetching data:', error));
-}
-
-function toggleSelection(event) {
-    const element = event.target;
-    element.classList.toggle('selected');
-    const selected = element.classList.contains('selected');
-    const input = document.querySelector(`input[name="${element.dataset.team}_${element.dataset.type}[]"][value="${element.dataset.id}"]`);
-    if (selected && !input) {
-        const hiddenInput = document.createElement('input');
-        hiddenInput.type = 'hidden';
-        hiddenInput.name = `${element.dataset.team}_${element.dataset.type}[]`;
-        hiddenInput.value = element.dataset.id;
-        if (tradeForm) {
-            tradeForm.appendChild(hiddenInput);
-        } else {
-            console.error('Form not found');
-        }
-    } else if (!selected && input) {
-        if (tradeForm) {
-            tradeForm.removeChild(input);
-        } else {
-            console.error('Form not found');
-        }
-    }
-}
-
-tradeForm.addEventListener('submit', function(event) {
-    event.preventDefault(); // Prevent the default form submission
-
-    // Build the confirmation message
-    const teamAPlayers = Array.from(document.querySelectorAll('.selectable-box[data-team="team_a"].selected')).map(box => box.textContent).join(', ');
-    const teamBPlayers = Array.from(document.querySelectorAll('.selectable-box[data-team="team_b"].selected')).map(box => box.textContent).join(', ');
-
-    const confirmationMessage = `Are you sure you want to confirm this trade?\n\nTeam A: ${teamAPlayers}\n\nTeam B: ${teamBPlayers}`;
-
-    if (confirm(confirmationMessage)) {
-        // If confirmed, submit the form
-        const confirmInput = document.createElement('input');
-        confirmInput.type = 'hidden';
-        confirmInput.name = 'confirm_trade';
-        confirmInput.value = '1';
-        tradeForm.appendChild(confirmInput);
-        tradeForm.submit();
-    }
-});
-
-function rollbackTrade(tradeId) {
-    if (confirm('Are you sure you want to rollback this trade?')) {
-        fetch(`rollback_trade.php?trade_id=${tradeId}`)
+    function fetchPlayersAndPicks(teamId, team) {
+        fetch(`fetch_team_data.php?team_id=${teamId}`)
             .then(response => response.json())
             .then(data => {
-                if (data.success) {
-                    alert('Trade rollback successful.');
-                    location.reload();  // Refresh the page to reflect changes
-                } else {
-                    alert('Failed to rollback trade.');
-                }
+                const playersList = team === 'team_a' ? teamAPlayersList : teamBPlayersList;
+                const draftPicksList = team === 'team_a' ? teamADraftPicksList : teamBDraftPicksList;
+
+                // Sort players alphabetically by last name
+                data.players.sort((a, b) => a.last_name.localeCompare(b.last_name));
+
+                playersList.innerHTML = '';
+                data.players.forEach(player => {
+                    const div = document.createElement('div');
+                    div.classList.add('selectable-box');
+                    div.dataset.id = player.id;
+                    div.dataset.type = 'player';
+                    div.dataset.team = team;
+                    let name = `${player.first_name} ${player.last_name}`;
+                    if (player.is_pitcher && player.throws === 'L') {
+                        name += '*';
+                    } else if (!player.is_pitcher && player.bats === 'L') {
+                        name += '*';
+                    } else if (!player.is_pitcher && player.bats === 'S') {
+                        name += '@';
+                    }
+                    if (player.no_card === 1) {
+                        name += '‡';
+                    }
+                    div.textContent = name;
+                    div.onclick = toggleSelection;
+                    playersList.appendChild(div);
+                });
+
+                draftPicksList.innerHTML = '';
+                data.draft_picks.forEach(pick => {
+                    const div = document.createElement('div');
+                    div.classList.add('selectable-box');
+                    div.dataset.id = pick.id;
+                    div.dataset.type = 'draft_pick';
+                    div.dataset.team = team;
+                    const originalTeamName = teams[pick.original_team_id] ? teams[pick.original_team_id].team_name : teams[teamId].team_name;
+                    div.textContent = `Round ${pick.round}, Year ${pick.year} (${originalTeamName})`;
+                    div.onclick = toggleSelection;
+                    draftPicksList.appendChild(div);
+                });
             })
-            .catch(error => console.error('Error rolling back trade:', error));
+            .catch(error => console.error('Error fetching data:', error));
     }
-}
 
+    function toggleSelection(event) {
+        const element = event.target;
+        element.classList.toggle('selected');
+        const selected = element.classList.contains('selected');
+        const input = document.querySelector(`input[name="${element.dataset.team}_${element.dataset.type}[]"][value="${element.dataset.id}"]`);
+        if (selected && !input) {
+            const hiddenInput = document.createElement('input');
+            hiddenInput.type = 'hidden';
+            hiddenInput.name = `${element.dataset.team}_${element.dataset.type}[]`;
+            hiddenInput.value = element.dataset.id;
+            if (tradeForm) {
+                tradeForm.appendChild(hiddenInput);
+            } else {
+                console.error('Form not found');
+            }
+        } else if (!selected && input) {
+            if (tradeForm) {
+                tradeForm.removeChild(input);
+            } else {
+                console.error('Form not found');
+            }
+        }
+    }
 
+    tradeForm.addEventListener('submit', function(event) {
+        event.preventDefault(); // Prevent the default form submission
+
+        // Build the confirmation message
+        const teamAPlayers = Array.from(document.querySelectorAll('.selectable-box[data-team="team_a"].selected')).map(box => box.textContent).join(', ');
+        const teamBPlayers = Array.from(document.querySelectorAll('.selectable-box[data-team="team_b"].selected')).map(box => box.textContent).join(', ');
+
+        const confirmationMessage = `Are you sure you want to confirm this trade?\n\nTeam A: ${teamAPlayers}\n\nTeam B: ${teamBPlayers}`;
+
+        if (confirm(confirmationMessage)) {
+            // If confirmed, submit the form
+            const confirmInput = document.createElement('input');
+            confirmInput.type = 'hidden';
+            confirmInput.name = 'confirm_trade';
+            confirmInput.value = '1';
+            tradeForm.appendChild(confirmInput);
+            tradeForm.submit();
+        }
+    });
+
+    function rollbackTrade(tradeId) {
+        if (confirm('Are you sure you want to rollback this trade?')) {
+            fetch(`rollback_trade.php?trade_id=${tradeId}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        alert('Trade rollback successful.');
+                        location.reload();  // Refresh the page to reflect changes
+                    } else {
+                        alert('Failed to rollback trade.');
+                    }
+                })
+                .catch(error => console.error('Error rolling back trade:', error));
+        }
+    }
 </script>
 
 </body>
 </html>
+
