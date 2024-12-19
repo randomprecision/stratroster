@@ -76,32 +76,59 @@ foreach ($draft_picks as $draft_pick) {
 }
 
 // Function to format draft picks as ranges with team name
-function format_draft_picks($picks, $team_name) {
+function format_draft_picks($picks, $team_names, $team_id) {
     $ranges = [];
     $current_range = [];
+    $current_team_name = '';
+
     foreach ($picks as $i => $pick) {
-        if (empty($current_range)) {
-            $current_range[] = $pick['round'];
-        } elseif ($pick['round'] == $current_range[count($current_range) - 1] + 1) {
+        $original_team_name = $team_names[$pick['original_team_id']] ?? $team_names[$team_id];
+
+        if (empty($current_range) || $original_team_name != $current_team_name) {
+            if (!empty($current_range)) {
+                if (count($current_range) > 1) {
+                    $ranges[] = "$current_team_name round " . $current_range[0] . '-' . $current_range[count($current_range) - 1];
+                } else {
+                    $ranges[] = "$current_team_name round " . $current_range[0];
+                }
+            }
+            $current_range = [$pick['round']];
+            $current_team_name = $original_team_name;
+        } elseif ($pick['round'] == end($current_range) + 1) {
             $current_range[] = $pick['round'];
         } else {
             if (count($current_range) > 1) {
-                $ranges[] = "$team_name round " . $current_range[0] . '-' . $current_range[count($current_range) - 1];
+                $ranges[] = "$current_team_name round " . $current_range[0] . '-' . $current_range[count($current_range) - 1];
             } else {
-                $ranges[] = "$team_name round " . $current_range[0];
+                $ranges[] = "$current_team_name round " . $current_range[0];
             }
             $current_range = [$pick['round']];
+            $current_team_name = $original_team_name;
         }
     }
+    
     if (!empty($current_range)) {
         if (count($current_range) > 1) {
-            $ranges[] = "$team_name round " . $current_range[0] . '-' . $current_range[count($current_range) - 1];
+            $ranges[] = "$current_team_name round " . $current_range[0] . '-' . $current_range[count($current_range) - 1];
         } else {
-            $ranges[] = "$team_name round " . $current_range[0];
+            $ranges[] = "$current_team_name round " . $current_range[0];
         }
     }
+
     return implode(', ', $ranges);
 }
+
+// Function to get player type counts
+function getPlayerCounts($players) {
+    $counts = [
+        'Catchers' => count($players['Catchers'] ?? []),
+        'Infielders' => count($players['Infielders'] ?? []),
+        'Outfielders' => count($players['Outfielders'] ?? []),
+        'Pitchers' => count($players['Pitchers'] ?? []),
+    ];
+    return $counts;
+}
+
 ?>
 
 <!DOCTYPE html>
@@ -167,83 +194,87 @@ function format_draft_picks($picks, $team_name) {
     <div class="roster-container">
         <?php foreach ($teams as $team): ?>
             <div class="team">
-                <h2><?= htmlspecialchars($team['team_name']) ?></h2>
-                <?php if (isset($team_emails[$team['id']])): ?>
-                    <p><a href="mailto:<?= htmlspecialchars($team_emails[$team['id']]) ?>">E-mail <?= htmlspecialchars($team['team_name']) ?> manager</a></p>
+            <h2><?= htmlspecialchars($team['team_name']) ?></h2>
+            <?php if (isset($team_emails[$team['id']])): ?>
+                <p><a href="mailto:<?= htmlspecialchars($team_emails[$team['id']]) ?>">E-mail <?= htmlspecialchars($team['team_name']) ?> manager</a></p>
+            <?php endif; ?>
+
+            <?php $counts = getPlayerCounts($team_players[$team['id']]); ?>
+
+            <h3>Catchers - <?= $counts['Catchers'] ?></h3>
+            <ul>
+                <?php if (!empty($team_players[$team['id']]['Catchers'])): ?>
+                    <?php foreach ($team_players[$team['id']]['Catchers'] as $catcher): ?>
+                        <li class="player-list">
+                            <span><?= htmlspecialchars($catcher['name']) ?></span>
+                            <span><?= htmlspecialchars($catcher['mlb_team']) ?></span>
+                        </li>
+                    <?php endforeach; ?>
+                <?php else: ?>
+                    <li>No catchers found for this team.</li>
                 <?php endif; ?>
+            </ul>
 
-                <h3>Catchers</h3>
-                <ul>
-                    <?php if (!empty($team_players[$team['id']]['Catchers'])): ?>
-                        <?php foreach ($team_players[$team['id']]['Catchers'] as $catcher): ?>
-                            <li class="player-list">
-                                <span><?= htmlspecialchars($catcher['name']) ?></span>
-                                <span><?= htmlspecialchars($catcher['mlb_team']) ?></span>
-                            </li>
-                        <?php endforeach; ?>
-                    <?php else: ?>
-                        <li>No catchers found for this team.</li>
-                    <?php endif; ?>
-                </ul>
+            <h3>Infielders - <?= $counts['Infielders'] ?></h3>
+            <ul>
+                <?php if (!empty($team_players[$team['id']]['Infielders'])): ?>
+                    <?php foreach ($team_players[$team['id']]['Infielders'] as $infielder): ?>
+                        <li class="player-list">
+                            <span><?= htmlspecialchars($infielder['name']) ?></span>
+                            <span><?= htmlspecialchars($infielder['mlb_team']) ?></span>
+                        </li>
+                    <?php endforeach; ?>
+                <?php else: ?>
+                    <li>No infielders found for this team.</li>
+                <?php endif; ?>
+            </ul>
 
-                <h3>Infielders</h3>
-                <ul>
-                    <?php if (!empty($team_players[$team['id']]['Infielders'])): ?>
-                        <?php foreach ($team_players[$team['id']]['Infielders'] as $infielder): ?>
-                            <li class="player-list">
-                                <span><?= htmlspecialchars($infielder['name']) ?></span>
-                                <span><?= htmlspecialchars($infielder['mlb_team']) ?></span>
-                            </li>
-                        <?php endforeach; ?>
-                    <?php else: ?>
-                        <li>No infielders found for this team.</li>
-                    <?php endif; ?>
-                </ul>
+            <h3>Outfielders - <?= $counts['Outfielders'] ?></h3>
+            <ul>
+                <?php if (!empty($team_players[$team['id']]['Outfielders'])): ?>
+                    <?php foreach ($team_players[$team['id']]['Outfielders'] as $outfielder): ?>
+                        <li class="player-list">
+                            <span><?= htmlspecialchars($outfielder['name']) ?></span>
+                            <span><?= htmlspecialchars($outfielder['mlb_team']) ?></span>
+                        </li>
+                    <?php endforeach; ?>
+                <?php else: ?>
+                    <li>No outfielders found for this team.</li>
+                <?php endif; ?>
+            </ul>
 
-                <h3>Outfielders</h3>
-                <ul>
-                    <?php if (!empty($team_players[$team['id']]['Outfielders'])): ?>
-                        <?php foreach ($team_players[$team['id']]['Outfielders'] as $outfielder): ?>
-                            <li class="player-list">
-                                <span><?= htmlspecialchars($outfielder['name']) ?></span>
-                                <span><?= htmlspecialchars($outfielder['mlb_team']) ?></span>
-                            </li>
-                        <?php endforeach; ?>
-                    <?php else: ?>
-                        <li>No outfielders found for this team.</li>
-                    <?php endif; ?>
-                </ul>
+            <h3>Pitchers - <?= $counts['Pitchers'] ?></h3>
+            <ul>
+                <?php if (!empty($team_players[$team['id']]['Pitchers'])): ?>
+                    <?php foreach ($team_players[$team['id']]['Pitchers'] as $pitcher): ?>
+                        <li class="player-list">
+                            <span><?= htmlspecialchars($pitcher['name']) ?></span>
+                            <span><?= htmlspecialchars($pitcher['mlb_team']) ?></span>
+                        </li>
+                    <?php endforeach; ?>
+                <?php else: ?>
+                    <li>No pitchers found for this team.</li>
+                <?php endif; ?>
+            </ul>
 
-                <h3>Pitchers</h3>
-                <ul>
-                    <?php if (!empty($team_players[$team['id']]['Pitchers'])): ?>
-                        <?php foreach ($team_players[$team['id']]['Pitchers'] as $pitcher): ?>
-                            <li class="player-list">
-                                <span><?= htmlspecialchars($pitcher['name']) ?></span>
-                                <span><?= htmlspecialchars($pitcher['mlb_team']) ?></span>
-                            </li>
-                        <?php endforeach; ?>
-                    <?php else: ?>
-                        <li>No pitchers found for this team.</li>
-                    <?php endif; ?>
-                </ul>
+            <h3>Draft Picks</h3>
+            <ul>
+                <?php if (!empty($team_draft_picks[$team['id']])): ?>
+                    <?php foreach ($team_draft_picks[$team['id']] as $year => $picks): ?>
+                        <li><strong><?= htmlspecialchars($year) ?></strong></li>
+                        <ul>
+                            <li><?= format_draft_picks($picks, $team_names, $team['id']) ?></li>
+                        </ul>
+                    <?php endforeach; ?>
+                <?php else: ?>
+                    <li>No draft picks found for this team.</li>
+                <?php endif; ?>
+            </ul>
 
-                <h3>Draft Picks</h3>
-                <ul>
-                    <?php if (!empty($team_draft_picks[$team['id']])): ?>
-                        <?php foreach ($team_draft_picks[$team['id']] as $year => $picks): ?>
-                            <li><strong><?= htmlspecialchars($year) ?></strong></li>
-                            <ul>
-                                <li><?= format_draft_picks($picks, $team_names[$team['id']]) ?></li>
-                            </ul>
-                        <?php endforeach; ?>
-                    <?php else: ?>
-                        <li>No draft picks found for this team.</li>
-                    <?php endif; ?>
-                </ul>
 
-                <p>Total Players: <?= $team_player_counts[$team['id']]['total'] ?? 0 ?>, Total No Cards: <?= $team_player_counts[$team['id']]['no_cards'] ?? 0 ?></p>
-            </div>
+            <p>Total Players: <?= $team_player_counts[$team['id']]['total'] ?? 0 ?>, Total No Cards: <?= $team_player_counts[$team['id']]['no_cards'] ?? 0 ?></p>
+        </div>
+
         <?php endforeach; ?>
     </div>
     <div class="footer">
