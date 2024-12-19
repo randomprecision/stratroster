@@ -59,7 +59,7 @@ function fetch_trade_details($ids, $type) {
         $stmt->execute($ids);
         $details = $stmt->fetchAll(PDO::FETCH_ASSOC);
         return array_map(function($item) use ($team_names) {
-            return $team_names[$item['original_team_id']] . ' round ' . $item['round'];
+            return $team_names[$item['original_team_id']] . ' ' . $item['year'] . ' #' . $item['round'];
         }, $details);
     }
 }
@@ -423,4 +423,3 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 
 </body>
 </html>
-
