@@ -289,7 +289,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         $teams_stmt = $db->query('SELECT * FROM teams ORDER BY team_name');
         $teams = $teams_stmt->fetchAll(PDO::FETCH_ASSOC);
     } elseif (isset($_POST['edit_league_properties'])) {
-       
+
     }
 }
 
@@ -437,13 +437,50 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['confirm_init']) && $_P
     $db_path = './stratroster.db';
     $initialize_message = initializeDatabase($db);
     echo "<pre>$initialize_message</pre>";
-    
+
     // Add a script to redirect after showing the message
     echo "<script>
         setTimeout(function() {
             window.location.href = 'logout.php';
         }, 5000); // Redirect after 5 seconds
     </script>";
+}
+
+// Handle form submission for reset draft picks
+if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['reset_draft_picks'])) {
+    $selected_team_id = $_POST['reset_team_id'];
+
+    if ($selected_team_id === 'all') {
+        // Delete all draft picks
+        $delete_draft_picks_stmt = $db->prepare('DELETE FROM draft_picks');
+        $delete_draft_picks_stmt->execute();
+
+        // Add new draft picks for all teams
+        $insert_draft_pick_stmt = $db->prepare('INSERT INTO draft_picks (team_id, round, year) VALUES (?, ?, ?)');
+        foreach ($teams as $team) {
+            for ($year = $draft_year; $year <= $draft_year + 1; $year++) {
+                for ($round = 1; $round <= $draft_rounds; $round++) {
+                    $insert_draft_pick_stmt->execute([$team['id'], $round, $year]);
+                }
+            }
+        }
+
+        $reset_message = "All draft picks have been reset and reassigned.";
+    } else {
+        // Delete draft picks for the selected team
+        $delete_draft_picks_stmt = $db->prepare('DELETE FROM draft_picks WHERE team_id = ? OR original_team_id = ?');
+        $delete_draft_picks_stmt->execute([$selected_team_id, $selected_team_id]);
+
+        // Add new draft picks for the selected team
+        $insert_draft_pick_stmt = $db->prepare('INSERT INTO draft_picks (team_id, round, year) VALUES (?, ?, ?)');
+        for ($year = $draft_year; $year <= $draft_year + 1; $year++) {
+            for ($round = 1; $round <= $draft_rounds; $round++) {
+                $insert_draft_pick_stmt->execute([$selected_team_id, $round, $year]);
+            }
+        }
+
+        $reset_message = "Draft picks for the selected team have been reset and reassigned.";
+    }
 }
 ?>
 
@@ -701,24 +738,55 @@ window.onload = function() {
         <button type="submit" name="assign_draft_pick">Assign Draft Pick</button>
     </form>
 </div>
-    <!-- Backup Database Section --> 
-    <div class="form-container">
-        <h3>Backup Database</h3>
-        <form method="GET">
-            <input type="hidden" name="backup" value="true">
-            <button type="submit">Backup Database</button>
-        </form>
-    </div>
+<!-- Reset Draft Picks Section -->
+<div class="form-container">
+    <h3>Reset Draft Picks</h3>
+    <form method="POST" onsubmit="return confirmResetDraftPicks();">
+        <label for="reset_team_id">Select Team:</label>
+        <select name="reset_team_id" id="reset_team_id" required>
+            <option value="all">All Teams</option>
+            <?php foreach ($teams as $team): ?>
+                <option value="<?= $team['id'] ?>"><?= htmlspecialchars($team['team_name']) ?></option>
+            <?php endforeach; ?>
+        </select>
+        <button type="submit" name="reset_draft_picks">Reset Draft Picks</button>
+    </form>
+</div>
+
+<?php if (isset($reset_message)): ?>
+    <div class="confirmation"><?= $reset_message ?></div>
+<?php endif; ?>
+
+<script>
+    function confirmResetDraftPicks() {
+        const teamSelect = document.getElementById('reset_team_id');
+        const selectedTeam = teamSelect.options[teamSelect.selectedIndex].text;
+        if (teamSelect.value === 'all') {
+            return confirm(`This will reset the draft picks for the entire league. Are you sure you want to continue?`);
+        } else {
+            return confirm(`This will reset the draft picks for ${selectedTeam}. Are you sure you want to continue?`);
+        }
+    }
+</script>
     
-    <!-- Initialize Database Section -->
-    <div class="form-container">
-        <h3>Initialize Database (you will be logged out)</h3>
-        <form method="POST" action="admin.php">
-            <label for="confirm_init">Type 'YES' to confirm initialization:</label>
-            <input type="text" id="confirm_init" name="confirm_init" required>
-            <button type="submit">Initialize Database</button>
-        </form>
-    </div>
+<!-- Backup Database Section -->
+<div class="form-container">
+    <h3>Backup Database</h3>
+    <form method="GET">
+        <input type="hidden" name="backup" value="true">
+        <button type="submit">Backup Database</button>
+    </form>
+</div>
+
+<!-- Initialize Database Section -->
+<div class="form-container">
+    <h3>Initialize Database (you will be logged out)</h3>
+    <form method="POST" action="admin.php">
+        <label for="confirm_init">Type 'YES' to confirm initialization:</label>
+        <input type="text" id="confirm_init" name="confirm_init" required>
+        <button type="submit">Initialize Database</button>
+    </form>
+</div>
 <p class="center"><a href="dashboard.php">Back to Dashboard</a></p>
 
 </body>
