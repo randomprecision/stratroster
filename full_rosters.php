@@ -2,7 +2,6 @@
 $db = new PDO("sqlite:./stratroster.db");
 
 // Fetch the background color
-
 $league_stmt = $db->query('SELECT background_color FROM league_properties LIMIT 1');
 $league = $league_stmt->fetch(PDO::FETCH_ASSOC);
 $background_color = $league['background_color'];
@@ -17,8 +16,8 @@ foreach ($teams as $team) {
     $team_names[$team['id']] = $team['team_name'];
 }
 
-// Fetch players for all teams
-$players_stmt = $db->query('SELECT * FROM players ORDER BY last_name');
+// Fetch players for all teams, including MLB team information from player.team
+$players_stmt = $db->query('SELECT *, team AS mlb_team FROM players ORDER BY last_name');
 $players = $players_stmt->fetchAll(PDO::FETCH_ASSOC);
 
 // Fetch draft picks for all teams
@@ -40,7 +39,7 @@ foreach ($users as $user) {
 $team_players = [];
 $team_player_counts = [];
 foreach ($players as $player) {
-    $name = htmlspecialchars($player['first_name'] . ' ' . $player['last_name']);
+    $name = htmlspecialchars_decode($player['first_name'] . ' ' . $player['last_name']); // Use htmlspecialchars_decode
     if ($player['is_pitcher'] && $player['throws'] == 'L') {
         $name .= '*';
     } elseif (!$player['is_pitcher'] && $player['bats'] == 'L') {
@@ -53,16 +52,20 @@ foreach ($players as $player) {
         $team_player_counts[$player['fantasy_team_id']]['no_cards'] = isset($team_player_counts[$player['fantasy_team_id']]['no_cards']) ? $team_player_counts[$player['fantasy_team_id']]['no_cards'] + 1 : 1;
     }
 
+    // Include MLB team information
+    $mlb_team = htmlspecialchars_decode($player['mlb_team']); // Use htmlspecialchars_decode
+    $team_players[$player['fantasy_team_id']][] = ['name' => $name, 'mlb_team' => $mlb_team];
+
     $team_player_counts[$player['fantasy_team_id']]['total'] = isset($team_player_counts[$player['fantasy_team_id']]['total']) ? $team_player_counts[$player['fantasy_team_id']]['total'] + 1 : 1;
 
     if ($player['is_pitcher']) {
-        $team_players[$player['fantasy_team_id']]['Pitchers'][] = $name;
+        $team_players[$player['fantasy_team_id']]['Pitchers'][] = ['name' => $name, 'mlb_team' => $mlb_team];
     } elseif ($player['is_catcher']) {
-        $team_players[$player['fantasy_team_id']]['Catchers'][] = $name;
+        $team_players[$player['fantasy_team_id']]['Catchers'][] = ['name' => $name, 'mlb_team' => $mlb_team];
     } elseif ($player['is_infielder']) {
-        $team_players[$player['fantasy_team_id']]['Infielders'][] = $name;
+        $team_players[$player['fantasy_team_id']]['Infielders'][] = ['name' => $name, 'mlb_team' => $mlb_team];
     } elseif ($player['is_outfielder']) {
-        $team_players[$player['fantasy_team_id']]['Outfielders'][] = $name;
+        $team_players[$player['fantasy_team_id']]['Outfielders'][] = ['name' => $name, 'mlb_team' => $mlb_team];
     }
 }
 
@@ -106,53 +109,58 @@ function format_draft_picks($picks, $team_name) {
 <head>
     <title>Full Rosters</title>
     <style>
-	body {
-	    background-color: <?= htmlspecialchars($background_color) ?>;
-            font-family: 'Lato', sans-serif;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-            margin: 0;
-        }
-        .roster-container {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 20px;
-            text-align: center;
-            padding: 20px;
-            border: 2px solid black;
-            border-radius: 10px;
-            background-color: #f9f9f9;
-            max-height: 80vh;
-            overflow-y: auto;
-        }
-        .team {
-            border: 1px solid black;
-            padding: 10px;
-            border-radius: 5px;
-            background-color: #ffffff;
-        }
-        h2 {
-            color: #333;
-        }
-        h3 {
-            color: #666;
-        }
-        hr {
-            border: 1px solid black;
-        }
-        ul {
-            list-style: none;
-            padding: 0;
-        }
-        li {
-            margin: 5px 0;
-        }
-        .footer {
-            margin-top: 20px;
-        }
+    body {
+        background-color: <?= htmlspecialchars($background_color) ?>;
+        font-family: 'Lato', sans-serif;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        height: 100vh;
+        margin: 0;
+    }
+    .roster-container {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 20px;
+        text-align: left; /* Left align the content */
+        padding: 20px;
+        border: 2px solid black;
+        border-radius: 10px;
+        background-color: #f9f9f9;
+        max-height: 80vh;
+        overflow-y: auto;
+    }
+    .team {
+        border: 1px solid black;
+        padding: 10px;
+        border-radius: 5px;
+        background-color: #ffffff;
+    }
+    h2 {
+        color: #333;
+    }
+    h3 {
+        color: #666;
+    }
+    hr {
+        border: 1px solid black;
+    }
+    ul {
+        list-style: none;
+        padding: 0;
+    }
+    li {
+        margin: 5px 0;
+        display: flex;
+        justify-content: space-between;
+    }
+    .footer {
+        margin-top: 20px;
+    }
+    .player-list span {
+        flex: 1;
+    }
     </style>
 </head>
 <body>
@@ -168,7 +176,10 @@ function format_draft_picks($picks, $team_name) {
                 <ul>
                     <?php if (!empty($team_players[$team['id']]['Catchers'])): ?>
                         <?php foreach ($team_players[$team['id']]['Catchers'] as $catcher): ?>
-                            <li><?= $catcher ?></li>
+                            <li class="player-list">
+                                <span><?= htmlspecialchars($catcher['name']) ?></span>
+                                <span><?= htmlspecialchars($catcher['mlb_team']) ?></span>
+                            </li>
                         <?php endforeach; ?>
                     <?php else: ?>
                         <li>No catchers found for this team.</li>
@@ -179,7 +190,10 @@ function format_draft_picks($picks, $team_name) {
                 <ul>
                     <?php if (!empty($team_players[$team['id']]['Infielders'])): ?>
                         <?php foreach ($team_players[$team['id']]['Infielders'] as $infielder): ?>
-                            <li><?= $infielder ?></li>
+                            <li class="player-list">
+                                <span><?= htmlspecialchars($infielder['name']) ?></span>
+                                <span><?= htmlspecialchars($infielder['mlb_team']) ?></span>
+                            </li>
                         <?php endforeach; ?>
                     <?php else: ?>
                         <li>No infielders found for this team.</li>
@@ -190,7 +204,10 @@ function format_draft_picks($picks, $team_name) {
                 <ul>
                     <?php if (!empty($team_players[$team['id']]['Outfielders'])): ?>
                         <?php foreach ($team_players[$team['id']]['Outfielders'] as $outfielder): ?>
-                            <li><?= $outfielder ?></li>
+                            <li class="player-list">
+                                <span><?= htmlspecialchars($outfielder['name']) ?></span>
+                                <span><?= htmlspecialchars($outfielder['mlb_team']) ?></span>
+                            </li>
                         <?php endforeach; ?>
                     <?php else: ?>
                         <li>No outfielders found for this team.</li>
@@ -201,7 +218,10 @@ function format_draft_picks($picks, $team_name) {
                 <ul>
                     <?php if (!empty($team_players[$team['id']]['Pitchers'])): ?>
                         <?php foreach ($team_players[$team['id']]['Pitchers'] as $pitcher): ?>
-                            <li><?= $pitcher ?></li>
+                            <li class="player-list">
+                                <span><?= htmlspecialchars($pitcher['name']) ?></span>
+                                <span><?= htmlspecialchars($pitcher['mlb_team']) ?></span>
+                            </li>
                         <?php endforeach; ?>
                     <?php else: ?>
                         <li>No pitchers found for this team.</li>
@@ -231,4 +251,3 @@ function format_draft_picks($picks, $team_name) {
     </div>
 </body>
 </html>
-
