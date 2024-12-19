@@ -3,7 +3,6 @@ session_start();
 $db = new PDO("sqlite:./stratroster.db");
 
 // Fetch the background color
-
 $league_stmt = $db->query('SELECT background_color FROM league_properties LIMIT 1');
 $league = $league_stmt->fetch(PDO::FETCH_ASSOC);
 $background_color = $league['background_color'];
@@ -33,11 +32,19 @@ $players_stmt->execute([$user_team['team_id']]);
 $players = $players_stmt->fetchAll(PDO::FETCH_ASSOC);
 
 // Fetch the draft picks for the user's team
-$draft_picks_stmt = $db->prepare('SELECT draft_picks.*, teams.team_name AS original_team_name
-                                   FROM draft_picks
-                                   JOIN teams ON draft_picks.original_team_id = teams.id
-                                   WHERE draft_picks.team_id = ?
-                                   ORDER BY draft_picks.year, draft_picks.round');
+$team_stmt = $db->query('SELECT id, team_name FROM teams');
+$team_names = [];
+while ($team = $team_stmt->fetch(PDO::FETCH_ASSOC)) {
+    $team_names[$team['id']] = $team['team_name'];
+}
+
+$draft_picks_stmt = $db->prepare('SELECT draft_picks.*, 
+                                  original_teams.team_name AS original_team_name
+                                  FROM draft_picks
+                                  JOIN teams ON draft_picks.team_id = teams.id
+                                  LEFT JOIN teams original_teams ON draft_picks.original_team_id = original_teams.id
+                                  WHERE draft_picks.team_id = ?
+                                  ORDER BY draft_picks.year, draft_picks.round');
 $draft_picks_stmt->execute([$user_team['team_id']]);
 $draft_picks = $draft_picks_stmt->fetchAll(PDO::FETCH_ASSOC);
 
@@ -48,34 +55,45 @@ foreach ($draft_picks as $draft_pick) {
 }
 
 // Function to format draft picks as ranges with original team name
-function format_draft_picks($picks) {
+function format_draft_picks($picks, $team_names) {
     $ranges = [];
     $current_range = [];
-    $current_team = null;
+    $current_team_name = '';
 
     foreach ($picks as $i => $pick) {
-        if (empty($current_range)) {
-            $current_range[] = $pick['round'];
-            $current_team = $pick['original_team_name'];
-        } elseif ($pick['round'] == $current_range[count($current_range) - 1] + 1 && $pick['original_team_name'] == $current_team) {
+        $original_team_name = $pick['original_team_name'] ?? $team_names[$pick['team_id']] ?? 'Unknown';
+
+        if (empty($current_range) || $original_team_name != $current_team_name) {
+            if (!empty($current_range)) {
+                if (count($current_range) > 1) {
+                    $ranges[] = "$current_team_name round " . $current_range[0] . '-' . $current_range[count($current_range) - 1];
+                } else {
+                    $ranges[] = "$current_team_name round " . $current_range[0];
+                }
+            }
+            $current_range = [$pick['round']];
+            $current_team_name = $original_team_name;
+        } elseif ($pick['round'] == end($current_range) + 1) {
             $current_range[] = $pick['round'];
         } else {
             if (count($current_range) > 1) {
-                $ranges[] = $current_team . ' round ' . $current_range[0] . '-' . $current_range[count($current_range) - 1];
+                $ranges[] = "$current_team_name round " . $current_range[0] . '-' . $current_range[count($current_range) - 1];
             } else {
-                $ranges[] = $current_team . ' round ' . $current_range[0];
+                $ranges[] = "$current_team_name round " . $current_range[0];
             }
             $current_range = [$pick['round']];
-            $current_team = $pick['original_team_name'];
+            $current_team_name = $original_team_name;
         }
     }
+    
     if (!empty($current_range)) {
         if (count($current_range) > 1) {
-            $ranges[] = $current_team . ' round ' . $current_range[0] . '-' . $current_range[count($current_range) - 1];
+            $ranges[] = "$current_team_name round " . $current_range[0] . '-' . $current_range[count($current_range) - 1];
         } else {
-            $ranges[] = $current_team . ' round ' . $current_range[0];
+            $ranges[] = "$current_team_name round " . $current_range[0];
         }
     }
+
     return implode(', ', $ranges);
 }
 
@@ -101,14 +119,16 @@ foreach ($players as $player) {
         $total_no_cards++;
     }
 
+    $mlb_team = htmlspecialchars($player['team']); // Fetch the MLB team
+
     if ($player['is_pitcher']) {
-        $pitchers[] = $name;
+        $pitchers[] = ['name' => $name, 'team' => $mlb_team];
     } elseif ($player['is_catcher']) {
-        $catchers[] = $name;
+        $catchers[] = ['name' => $name, 'team' => $mlb_team];
     } elseif ($player['is_infielder']) {
-        $infielders[] = $name;
+        $infielders[] = ['name' => $name, 'team' => $mlb_team];
     } elseif ($player['is_outfielder']) {
-        $outfielders[] = $name;
+        $outfielders[] = ['name' => $name, 'team' => $mlb_team];
     }
     $total_players++;
 }
@@ -135,22 +155,43 @@ foreach ($players as $player) {
             border: 2px solid black;
             border-radius: 10px;
             background-color: #f9f9f9;
+            width: 90%;
             height: 80vh; /* Set the maximum height for the container */
             overflow-y: auto; /* Enable vertical scrolling */
+        }
+        .team-column {
+            display: inline-block;
+            width: 45%;
+            vertical-align: top;
+        }
+        .team-column-left,
+        .team-column-right {
+            margin-bottom: 20px;
         }
         h3 {
             color: #333;
         }
-        ul {
-            list-style: none;
-            padding: 0;
+        table {
+            width: 100%;
+            border-collapse: collapse;
         }
-        li {
-            margin: 5px 0;
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background-color: #f2f2f2;
         }
         .center {
             text-align: center;
             margin-top: 20px;
+        }
+        @media screen and (max-width: 768px) {
+            .team-column {
+                display: block;
+                width: 100%;
+            }
         }
     </style>
 </head>
@@ -158,53 +199,77 @@ foreach ($players as $player) {
     <div class="team-container">
         <h2><?= htmlspecialchars($user_team['team_name']) ?></h2>
 
-        <h3>Catchers</h3>
-        <ul>
-            <?php foreach ($catchers as $catcher): ?>
-                <li><?= $catcher ?></li>
-            <?php endforeach; ?>
-        </ul>
+        <div class="team-column team-column-left">
+            <h3>Catchers (<?= count($catchers) ?>)</h3>
+            <table>
+                <tr>
+                    <th>Name</th>
+                    <th>MLB Team</th>
+                </tr>
+                <?php foreach ($catchers as $catcher): ?>
+                    <tr>
+                        <td><?= $catcher['name'] ?></td>
+                        <td><?= $catcher['team'] ?></td>
+                    </tr>
+                <?php endforeach; ?>
+            </table>
 
-        <h3>Infielders</h3>
-        <ul>
-            <?php foreach ($infielders as $infielder): ?>
-                <li><?= $infielder ?></li>
-            <?php endforeach; ?>
-        </ul>
+            <h3>Infielders (<?= count($infielders) ?>)</h3>
+            <table>
+                <tr>
+                    <th>Name</th>
+                    <th>MLB Team</th>
+                </tr>
+                <?php foreach ($infielders as $infielder): ?>
+                    <tr>
+                        <td><?= $infielder['name'] ?></td>
+                        <td><?= $infielder['team'] ?></td>
+                    </tr>
+                <?php endforeach; ?>
+            </table>
 
-        <h3>Outfielders</h3>
-        <ul>
-            <?php foreach ($outfielders as $outfielder): ?>
-                <li><?= $outfielder ?></li>
-            <?php endforeach; ?>
-        </ul>
+            <h3>Outfielders (<?= count($outfielders) ?>)</h3>
+            <table>
+                <tr>
+                    <th>Name</th>
+                    <th>MLB Team</th>
+                </tr>
+                <?php foreach ($outfielders as $outfielder): ?>
+                    <tr>
+                        <td><?= $outfielder['name'] ?></td>
+                        <td><?= $outfielder['team'] ?></td>
+                    </tr>
+                <?php endforeach; ?>
+            </table>
+        </div>
 
-        <h3>Pitchers</h3>
-        <ul>
-            <?php foreach ($pitchers as $pitcher): ?>
-                <li><?= $pitcher ?></li>
-            <?php endforeach; ?>
-        </ul>
+        <div class="team-column team-column-right">
+            <h3>Pitchers (<?= count($pitchers) ?>)</h3>
+            <table>
+                <tr>
+                    <th>Name</th>
+                    <th>MLB Team</th>
+                </tr>
+                <?php foreach ($pitchers as $pitcher): ?>
+                    <tr>
+                        <td><?= $pitcher['name'] ?></td>
+                        <td><?= $pitcher['team'] ?></td>
+                    </tr>
+                <?php endforeach; ?>
+            </table>
+        </div>
+
+        <p>Total Players: <?= $total_players ?>, Total No Cards: <?= $total_no_cards ?></p>
 
         <h3>Draft Picks</h3>
         <ul>
             <?php foreach ($draft_picks_by_year as $year => $picks): ?>
                 <li><strong><?= htmlspecialchars($year) ?></strong></li>
                 <ul>
-                    <?php
-                    $own_picks = array_filter($picks, function($pick) use ($user_team) {
-                        return $pick['team_id'] == $user_team['team_id'];
-                    });
-
-                    if (!empty($own_picks)) {
-                        echo '<li>' . format_draft_picks($own_picks) . '</li>';
-                    }
-                    ?>
+                    <li><?= format_draft_picks($picks, $team_names, $user_team['team_id']) ?></li>
                 </ul>
             <?php endforeach; ?>
         </ul>
-
-        <p>Total Players: <?= $total_players ?>, Total No Cards: <?= $total_no_cards ?></p>
     </div>
 
     <p class="center"><a href="dashboard.php">Back to Dashboard</a></p>
