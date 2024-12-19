@@ -3,7 +3,6 @@ session_start();
 $db = new PDO("sqlite:./stratroster.db");
 
 // Fetch the background color
-
 $league_stmt = $db->query('SELECT background_color FROM league_properties LIMIT 1');
 $league = $league_stmt->fetch(PDO::FETCH_ASSOC);
 $background_color = $league['background_color'];
@@ -39,9 +38,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     <title>Login</title>
     <style>
         body {
-
-	    background-color: <?= htmlspecialchars($background_color) ?>;
-	    font-family: 'Lato', sans-serif;
+            background-color: <?= htmlspecialchars($background_color) ?>;
+            font-family: 'Lato', sans-serif;
         }
         .container {
             width: 300px;
@@ -50,6 +48,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             border: 1px solid #ccc;
             border-radius: 5px;
             background-color: #f9f9f9;
+            text-align: center;
         }
         .container h1 {
             font-size: 1.5em;
@@ -80,6 +79,13 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             max-width: 100%;
             height: auto;
         }
+        .roster-link {
+            display: block;
+            margin-top: 15px;
+            text-decoration: none;
+            color: #333;
+            font-weight: bold;
+        }
     </style>
 </head>
 <body>
@@ -98,6 +104,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             <input type="password" id="password" name="password" required><br>
             <button type="submit">Login</button>
         </form>
+        <a class="roster-link" href="full_rosters.php">Just show me the rosters!</a>
     </div>
 </body>
 </html>
