@@ -3,7 +3,6 @@ session_start();
 $db = new PDO("sqlite:./stratroster.db");
 
 // Fetch the background color
-
 $league_stmt = $db->query('SELECT background_color FROM league_properties LIMIT 1');
 $league = $league_stmt->fetch(PDO::FETCH_ASSOC);
 $background_color = $league['background_color'];
@@ -33,8 +32,8 @@ $is_admin = $user['is_admin'];
     <title>Dashboard</title>
     <style>
         body {
-	    background-color: <?= htmlspecialchars($background_color) ?>;
-	    font-family: 'Lato', sans-serif;
+            background-color: <?= htmlspecialchars($background_color) ?>;
+            font-family: 'Lato', sans-serif;
             display: flex;
             justify-content: center;
             align-items: center;
@@ -65,6 +64,7 @@ $is_admin = $user['is_admin'];
             <li><a href="view_team.php">View Your Team</a></li>
             <li><a href="full_rosters.php">View Full Rosters</a></li>
             <li><a href="recent.php">View Recent Trades</a></li>
+            <li><a href="edit_details.php">Edit User Details</a></li>
             <?php if ($is_admin): ?>
                 <li><a href="trades.php">Trade Players and Draft Picks</a></li>
                 <li><a href="admin.php">Admin Panel</a></li>
@@ -74,4 +74,3 @@ $is_admin = $user['is_admin'];
     </div>
 </body>
 </html>
-
