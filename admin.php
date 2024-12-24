@@ -3,22 +3,25 @@ session_start();
 
 // admin page for doing admin things
 
-$db = new PDO("sqlite:./stratroster.db");
-
 if (!isset($_SESSION['user_id']) || $_SESSION['is_admin'] != 1) {
     header('Location: login.php');
     exit;
 }
 
+$db = new PDO("sqlite:./stratroster.db");
+$db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+$db->exec('PRAGMA busy_timeout = 10000'); // Set busy timeout to 10 seconds
+
 $current_year = date("Y"); // Define current_year before using it
 
 // Fetch current values for league properties
-$league_stmt = $db->query('SELECT background_color, name, draft_rounds, draft_year FROM league_properties LIMIT 1');
+$league_stmt = $db->query('SELECT background_color, name, draft_rounds, draft_year, maint_mode FROM league_properties LIMIT 1');
 $league = $league_stmt->fetch(PDO::FETCH_ASSOC);
 $background_color = isset($league['background_color']) ? $league['background_color'] : '#FFFFFF'; // Default to white if not set
 $league_name = isset($league['name']) ? $league['name'] : 'My League';
 $draft_rounds = isset($league['draft_rounds']) ? $league['draft_rounds'] : 10; // Default to 10 if not set
 $draft_year = isset($league['draft_year']) ? $league['draft_year'] : $current_year;
+$maint_mode = isset($league['maint_mode']) ? $league['maint_mode'] : 0;
 
 // Fetch the list of teams
 $teams_stmt = $db->query('SELECT * FROM teams ORDER BY team_name');
@@ -40,7 +43,6 @@ $user = $user_stmt->fetch(PDO::FETCH_ASSOC);
 
 $team_assigned = isset($user['team_id']) && $user['team_id'] !== null && $user['team_id'] > 0;
 $user_has_team = $team_assigned ? true : false;
-
 // Set default values if not set
 $league_name = $league['name'] ?? 'My League';
 $draft_year = $league['draft_year'] ?? date('Y');
@@ -84,28 +86,15 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['edit_league_properties
             error_log("Error updating league properties: " . $e->getMessage());
         }
 
-        // Refresh the league properties after updating
-        $league_properties_stmt = $db->query('SELECT * FROM league_properties LIMIT 1');
-        $league_properties = $league_properties_stmt->fetch(PDO::FETCH_ASSOC);
-
         // Update variables with refreshed values
-        $league_name = $league_properties['name'];
-        $draft_year = $league_properties['draft_year'];
-        $draft_rounds = $league_properties['draft_rounds'];
-        $background_color = $league_properties['background_color'];
+        $league_name = $league['name'];
+        $draft_year = $league['draft_year'];
+        $draft_rounds = $league['draft_rounds'];
+        $background_color = $league['background_color'];
 
         echo "<div class='confirmation'>League properties applied successfully.</div>";
     }
 }
-
-// Fetch current values for league properties
-$league_stmt = $db->query('SELECT background_color, name, draft_rounds, draft_year FROM league_properties LIMIT 1');
-$league = $league_stmt->fetch(PDO::FETCH_ASSOC);
-$background_color = isset($league['background_color']) ? $league['background_color'] : '#FFFFFF'; // Default to white if not set
-$league_name = isset($league['name']) ? $league['name'] : 'My League';
-$draft_rounds = isset($league['draft_rounds']) ? $league['draft_rounds'] : 10; // Default to 10 if not set
-$draft_year = isset($league['draft_year']) ? $league['draft_year'] : $current_year;
-
 // Handle form submission for adding a new team
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['add_team'])) {
     $new_team_name = trim($_POST['new_team_name']);
@@ -155,7 +144,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['add_team'])) {
         $message = "Error checking for existing team name.";
     }
 }
-
 // Handle form submission for assigning users to teams
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['assign_team'])) {
     $team_assignment_message = '';
@@ -230,7 +218,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         $users = $users_stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 }
-
 // Handle form submission for creating a new user
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['new_username']) && isset($_POST['new_email']) && isset($_POST['new_password'])) {
     $new_username = $_POST['new_username'];
@@ -288,11 +275,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         // Refresh the teams list after deleting a team
         $teams_stmt = $db->query('SELECT * FROM teams ORDER BY team_name');
         $teams = $teams_stmt->fetchAll(PDO::FETCH_ASSOC);
-    } elseif (isset($_POST['edit_league_properties'])) {
-
     }
 }
-
 // Handle form submission for assigning draft picks
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['assign_draft_pick'])) {
     $from_team_id = $_POST['from_team'];
@@ -382,7 +366,6 @@ function initializeDatabase($db) {
 
         // Begin a transaction
         $db->beginTransaction();
-
         // Delete all entries from the tables and reset auto-increment sequences
         foreach ($tables as $table) {
             $db->exec("DELETE FROM $table");
@@ -445,7 +428,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['confirm_init']) && $_P
         }, 5000); // Redirect after 5 seconds
     </script>";
 }
-
 // Handle form submission for reset draft picks
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['reset_draft_picks'])) {
     $selected_team_id = $_POST['reset_team_id'];
@@ -482,8 +464,49 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['reset_draft_picks'])) 
         $reset_message = "Draft picks for the selected team have been reset and reassigned.";
     }
 }
-?>
 
+if (!isset($_SESSION['is_admin']) || !$_SESSION['is_admin']) {
+    header('Location: login.php');
+    exit;
+}
+
+try {
+    $db = new PDO("sqlite:./stratroster.db");
+    $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    $db->exec('PRAGMA busy_timeout = 10000'); // Set busy timeout to 10 seconds
+
+    // Fetch current maintenance mode status
+    $league_stmt = $db->query('SELECT maint_mode FROM league_properties LIMIT 1');
+    $maint_mode = $league_stmt->fetchColumn();
+
+    // Form handling for setting maintenance mode
+    if ($_SERVER['REQUEST_METHOD'] == 'POST') {
+        try {
+            $db->beginTransaction();
+            $maint_mode = isset($_POST['maint_mode']) ? 1 : 0;
+            $stmt = $db->prepare('UPDATE league_properties SET maint_mode = ?');
+            $stmt->execute([$maint_mode]);
+            $db->commit();
+        } catch (PDOException $e) {
+            $db->rollBack();
+            error_log($e->getMessage());
+            die("Transaction error: " . htmlspecialchars($e->getMessage()));
+        }
+    }
+
+    // Ensure the connection is closed after the operation
+    $db = null;
+} catch (PDOException $e) {
+    error_log($e->getMessage());
+    die("Database error: " . htmlspecialchars($e->getMessage()));
+}
+
+// Additional debugging
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
+ini_set('log_errors', 1);
+ini_set('error_log', './error.log');
+?>
 <!DOCTYPE html>
 <html>
 <head>
@@ -570,7 +593,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['reset_draft_picks'])) 
         <button type="submit" name="add_team">Add Team</button>
     </form>
 </div>
-
 <!-- Edit League Properties Section -->
 <div class="form-container">
     <h3>Edit League Properties</h3>
@@ -617,7 +639,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['reset_draft_picks'])) 
         <button type="submit" name="edit_league_properties">Apply</button>
     </form>
 </div>
-
 <script>
 function toggleCustomColorInput(value) {
     var customColorInput = document.getElementById('custom_background_color');
@@ -694,22 +715,22 @@ window.onload = function() {
         </form>
     <?php endif; ?>
 </div>
+
 <!-- Create New User Section -->
 <div class="form-container">
     <h3>Create New User</h3>
     <form method="POST">
         <label for="new_username">Username:</label>
-       <input type="text" id="new_username" name="new_username" required>
-<label for="new_email">Email:</label>
-<input type="email" id="new_email" name="new_email" required>
-<label for="new_password">Password:</label>
-<input type="password" id="new_password" name="new_password" required>
-<label for="new_is_admin">Admin:</label>
-<input type="checkbox" id="new_is_admin" name="new_is_admin" value="1">
-<button type="submit">Create User</button>
-</form>
+        <input type="text" id="new_username" name="new_username" required>
+        <label for="new_email">Email:</label>
+        <input type="email" id="new_email" name="new_email" required>
+        <label for="new_password">Password:</label>
+        <input type="password" id="new_password" name="new_password" required>
+        <label for="new_is_admin">Admin:</label>
+        <input type="checkbox" id="new_is_admin" name="new_is_admin" value="1">
+        <button type="submit">Create User</button>
+    </form>
 </div>
-
 <!-- Assign Draft Picks Section -->
 <div class="form-container">
     <h3>Assign Draft Pick</h3>
@@ -738,6 +759,7 @@ window.onload = function() {
         <button type="submit" name="assign_draft_pick">Assign Draft Pick</button>
     </form>
 </div>
+
 <!-- Reset Draft Picks Section -->
 <div class="form-container">
     <h3>Reset Draft Picks</h3>
@@ -756,7 +778,6 @@ window.onload = function() {
 <?php if (isset($reset_message)): ?>
     <div class="confirmation"><?= $reset_message ?></div>
 <?php endif; ?>
-
 <script>
     function confirmResetDraftPicks() {
         const teamSelect = document.getElementById('reset_team_id');
@@ -768,7 +789,13 @@ window.onload = function() {
         }
     }
 </script>
-    
+
+<!-- Maintenance Mode Link -->
+<div class="form-container">
+    <h3>Maintenance Mode</h3>
+    <p><a href="maint_mode.php">Set Maintenance Mode</a></p>
+</div>
+
 <!-- Backup Database Section -->
 <div class="form-container">
     <h3>Backup Database</h3>
@@ -788,7 +815,6 @@ window.onload = function() {
     </form>
 </div>
 <p class="center"><a href="dashboard.php">Back to Dashboard</a></p>
-
 </body>
 </html>
 
@@ -826,3 +852,8 @@ document.addEventListener('DOMContentLoaded', function() {
     updateDraftPicks();
 });
 </script>
+
+<?php
+// Close the database connection
+$db = null;
+?>
