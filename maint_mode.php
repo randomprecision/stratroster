@@ -67,7 +67,7 @@ try {
             <p><?= htmlspecialchars($message) ?></p>
         <?php endif; ?>
         <form method="POST" action="maint_mode.php">
-            <label for="maint_mode">Enable Maintenance Mode:</label>
+            <label for="maint_mode">Maintenance Mode Toggle:</label>
             <input type="checkbox" id="maint_mode" name="maint_mode" <?= $maint_mode ? 'checked' : '' ?>>
             <button type="submit">Apply</button>
         </form>
