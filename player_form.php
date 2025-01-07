@@ -1,202 +1,200 @@
 <?php
+// player_form.php - form for managers to add players to their teams
 
-    // player_form.php - form for managers to add players to their teams
+session_start();
+$db = new PDO("sqlite:./stratroster.db");
 
-    session_start();
-    $db = new PDO("sqlite:./stratroster.db");
+// Fetch the background color
+$league_stmt = $db->query('SELECT background_color FROM league_properties LIMIT 1');
+$league = $league_stmt->fetch(PDO::FETCH_ASSOC);
+$background_color = $league['background_color'];
 
-    // Fetch the background color
+if (!isset($_SESSION['user_id'])) {
+    die("User is not logged in.");
+}
 
-    $league_stmt = $db->query('SELECT background_color FROM league_properties LIMIT 1');
-    $league = $league_stmt->fetch(PDO::FETCH_ASSOC);
-    $background_color = $league['background_color'];
+$user_id = $_SESSION['user_id'];
+$user_stmt = $db->prepare('SELECT * FROM users WHERE id = ?');
+$user_stmt->execute([$user_id]);
+$user = $user_stmt->fetch(PDO::FETCH_ASSOC);
 
+$team_assigned = isset($user['team_id']) && $user['team_id'] !== null && $user['team_id'] > 0;
+$user_has_team = $team_assigned ? true : false;
 
-    if (!isset($_SESSION['user_id'])) {
-        die("User is not logged in.");
-    }
+// Fetch all teams for admin users
+$teams_stmt = $db->query('SELECT id, team_name FROM teams ORDER BY team_name');
+$teams = $teams_stmt->fetchAll(PDO::FETCH_ASSOC);
 
-    $user_id = $_SESSION['user_id'];
-    $user_stmt = $db->prepare('SELECT * FROM users WHERE id = ?');
-    $user_stmt->execute([$user_id]);
-    $user = $user_stmt->fetch(PDO::FETCH_ASSOC);
+// Define MLB teams
+$mlb_teams = [
+    "AL East" => ["BAL", "BOS", "NYA", "TBA", "TOR"],
+    "AL Central" => ["CHA", "CLE", "DET", "KCA", "MIN"],
+    "AL West" => ["HOU", "LAA", "OAK", "SEA", "TEX"],
+    "NL East" => ["ATL", "MIA", "NYN", "PHI", "WAS"],
+    "NL Central" => ["CHN", "CIN", "MIL", "PIT", "STL"],
+    "NL West" => ["ARI", "COL", "LAN", "SDN", "SFN"],
+    "Other" => ["IL", "FA"]
+];
 
-    $team_assigned = isset($user['team_id']) && $user['team_id'] !== null && $user['team_id'] > 0;
-    $user_has_team = $team_assigned ? true : false;
+// Handle form submission for deleting a player
+if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['delete_player'])) {
+    $delete_player_id = $_POST['delete_player_id'];
 
-    // Fetch all teams for admin users
-    $teams_stmt = $db->query('SELECT id, team_name FROM teams ORDER BY team_name');
-    $teams = $teams_stmt->fetchAll(PDO::FETCH_ASSOC);
+    // Verify if the ID is set and valid
+    if (!empty($delete_player_id)) {
+        // Delete the player from the database
+        $delete_player_stmt = $db->prepare('DELETE FROM players WHERE id = ?');
+        $deleted = $delete_player_stmt->execute([$delete_player_id]);
 
-    // Define MLB teams
-    $mlb_teams = [
-        "AL East" => ["BAL", "BOS", "NYA", "TBA", "TOR"],
-        "AL Central" => ["CHA", "CLE", "DET", "KCA", "MIN"],
-        "AL West" => ["HOU", "LAA", "OAK", "SEA", "TEX"],
-        "NL East" => ["ATL", "MIA", "NYN", "PHI", "WAS"],
-        "NL Central" => ["CHN", "CIN", "MIL", "PIT", "STL"],
-        "NL West" => ["ARI", "COL", "LAN", "SDN", "SFN"],
-        "Other" => ["IL", "FA"]
-    ];
-
-    // Handle form submission for deleting a player
-    if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['delete_player'])) {
-        $delete_player_id = $_POST['delete_player_id'];
-
-        // Verify if the ID is set and valid
-        if (!empty($delete_player_id)) {
-            // Delete the player from the database
-            $delete_player_stmt = $db->prepare('DELETE FROM players WHERE id = ?');
-            $deleted = $delete_player_stmt->execute([$delete_player_id]);
-
-            // Check if delete was successful
-            if ($deleted) {
-                echo "Player ID $delete_player_id deleted successfully.";
-                exit;
-            } else {
-                echo "Failed to delete player.";
-                exit;
-            }
+        // Check if delete was successful
+        if ($deleted) {
+            echo "Player ID $delete_player_id deleted successfully.";
+            exit;
         } else {
-            echo "Invalid player ID.";
+            echo "Failed to delete player.";
             exit;
         }
+    } else {
+        echo "Invalid player ID.";
+        exit;
     }
+}
+// Handle form submission for adding/editing a player
+if ($_SERVER['REQUEST_METHOD'] == 'POST' && !isset($_POST['delete_player'])) {
+    if (isset($_POST['upload_csv'])) {
+        // CSV upload logic remains the same
+    } else {
+        // Manual player submission logic
+        $first_name = $_POST['first_name'];
+        $last_name = $_POST['last_name'];
+        $team = $_POST['team'];
+        $bats = $_POST['bats'];
+        $throws = $_POST['throws'];
+        $position = $_POST['position'];
+        $no_card = isset($_POST['no_card']) ? 1 : 0;
+        $fantasy_team_id = $user['team_id'];  // Assign the fantasy_team_id from the user's team
 
-    // Handle form submission for adding/editing a player
-    if ($_SERVER['REQUEST_METHOD'] == 'POST' && !isset($_POST['delete_player'])) {
-        if (isset($_POST['upload_csv'])) {
-            // CSV upload logic remains the same
-        } else {
-            // Manual player submission logic
-            $first_name = $_POST['first_name'];
-            $last_name = $_POST['last_name'];
-            $team = $_POST['team'];
-            $bats = $_POST['bats'];
-            $throws = $_POST['throws'];
-            $position = $_POST['position'];
-            $no_card = isset($_POST['no_card']) ? 1 : 0;
-            $fantasy_team_id = $user['team_id'];  // Assign the fantasy_team_id from the user's team
+        // Set position flags
+        $is_catcher = $position === 'C' ? 1 : 0;
+        $is_infielder = $position === 'IF' ? 1 : 0;
+        $is_outfielder = $position === 'OF' ? 1 : 0;
+        $is_pitcher = $position === 'P' ? 1 : 0;
+        $is_dh = $position === 'DH' ? 1 : 0; // Add this flag for DH
 
-            // Set position flags
-            $is_catcher = $position === 'C' ? 1 : 0;
-            $is_infielder = $position === 'IF' ? 1 : 0;
-            $is_outfielder = $position === 'OF' ? 1 : 0;
-            $is_pitcher = $position === 'P' ? 1 : 0;
-            if (isset($_POST['edit_player_id']) && !empty($_POST['edit_player_id'])) {
-                $edit_player_id = $_POST['edit_player_id'];
+        if (isset($_POST['edit_player_id']) && !empty($_POST['edit_player_id'])) {
+            $edit_player_id = $_POST['edit_player_id'];
 
-                // Update existing player
-                $update_player_stmt = $db->prepare('UPDATE players SET first_name = ?, last_name = ?, team = ?, bats = ?, throws = ?, is_catcher = ?, is_infielder = ?, is_outfielder = ?, is_pitcher = ?, no_card = ? WHERE id = ?');
-                $updated = $update_player_stmt->execute([$first_name, $last_name, $team, $bats, $throws, $is_catcher, $is_infielder, $is_outfielder, $is_pitcher, $no_card, $edit_player_id]);
+            // Update existing player
+            $update_player_stmt = $db->prepare('UPDATE players SET first_name = ?, last_name = ?, team = ?, bats = ?, throws = ?, is_catcher = ?, is_infielder = ?, is_outfielder = ?, is_pitcher = ?, is_dh = ?, no_card = ? WHERE id = ?');
+            $updated = $update_player_stmt->execute([$first_name, $last_name, $team, $bats, $throws, $is_catcher, $is_infielder, $is_outfielder, $is_pitcher, $is_dh, $no_card, $edit_player_id]);
 
-                if ($updated) {
-                    $success = "Player " . htmlspecialchars($first_name) . " " . htmlspecialchars($last_name) . " updated successfully.";
-                    header('Location: ' . $_SERVER['PHP_SELF'] . '?team=' . $fantasy_team_id); // Redirect to reload the page
-                    exit;
-                } else {
-                    $error = "Failed to update player. Please try again.";
-                }
-            } else {
-                // Insert new player into the database
-                $insert_player_stmt = $db->prepare('INSERT INTO players (first_name, last_name, team, bats, throws, is_catcher, is_infielder, is_outfielder, is_pitcher, no_card, fantasy_team_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
-                $inserted = $insert_player_stmt->execute([$first_name, $last_name, $team, $bats, $throws, $is_catcher, $is_infielder, $is_outfielder, $is_pitcher, $no_card, $fantasy_team_id]);
-
-                if ($inserted) {
-                    $success = "New player " . htmlspecialchars($first_name) . " " . htmlspecialchars($last_name) . " added successfully.";
-                    header('Location: ' . $_SERVER['PHP_SELF'] . '?team=' . $fantasy_team_id); // Redirect to reload the page
-                    exit;
-                } else {
-                    $error = "Failed to add new player. Please try again.";
-                }
-            }
-        }
-    }
-
-    // Handle CSV upload
-    if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['upload_csv'])) {
-        if (isset($_FILES['csv_file']) && $_FILES['csv_file']['error'] == 0) {
-            $csv_file = $_FILES['csv_file']['tmp_name'];
-            $handle = fopen($csv_file, 'r');
-
-            // Read the first line
-            $header = fgets($handle);
-
-            // Strip BOM if present
-            $bom = pack('H*', 'EFBBBF');
-            $header = preg_replace("/^$bom/", '', $header);
-
-            // Parse the CSV header
-            $header = str_getcsv($header);
-            // Validate CSV format
-            $expected_columns = ['First Name', 'Last Name', 'MLB Team', 'Position', 'Bats', 'Throws', 'No Card'];
-
-            // Check for header column mismatch
-            $missing_columns = array_diff($expected_columns, $header);
-            if (!empty($missing_columns)) {
-                $error = "Invalid CSV format. Missing columns: " . implode(', ', $missing_columns);
-                fclose($handle);
-            } else {
-                while (($data = fgetcsv($handle, 1000, ',')) !== FALSE) {
-                    // Validate row length
-                    if (count($data) < count($expected_columns) - 1) { // Allow missing 'No Card'
-                        $error = "Invalid CSV format. Each row must have at least " . (count($expected_columns) - 1) . " columns.";
-                        fclose($handle);
-                        break;
-                    }
-
-                    $first_name = $data[0];
-                    $last_name = $data[1];
-                    $team = $data[2];
-                    $position = $data[3];
-                    $bats = $data[4];
-                    $throws = $data[5];
-                    $no_card = isset($data[6]) && strtoupper($data[6]) == 'Y' ? 1 : 0; // Translate 'Y' to 1, default to 0 if not set
-                    $fantasy_team_id = $user['team_id'];
-
-                    // Set position flags
-                    $is_catcher = $position === 'C' ? 1 : 0;
-                    $is_infielder = $position === 'IF' ? 1 : 0;
-                    $is_outfielder = $position === 'OF' ? 1 : 0;
-                    $is_pitcher = $position === 'P' ? 1 : 0;
-
-                    // Insert player into the database
-                    $insert_player_stmt = $db->prepare('INSERT INTO players (first_name, last_name, team, bats, throws, is_catcher, is_infielder, is_outfielder, is_pitcher, no_card, fantasy_team_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
-                    $inserted = $insert_player_stmt->execute([$first_name, $last_name, $team, $bats, $throws, $is_catcher, $is_infielder, $is_outfielder, $is_pitcher, $no_card, $fantasy_team_id]);
-
-                    if ($inserted) {
-                        $success = "CSV uploaded and players added successfully.";
-                    } else {
-                        $error = "Failed to add new player. Please try again.";
-                        fclose($handle);
-                        break;
-                    }
-                }
-                fclose($handle);
+            if ($updated) {
+                $success = "Player " . htmlspecialchars($first_name) . " " . htmlspecialchars($last_name) . " updated successfully.";
                 header('Location: ' . $_SERVER['PHP_SELF'] . '?team=' . $fantasy_team_id); // Redirect to reload the page
                 exit;
+            } else {
+                $error = "Failed to update player. Please try again.";
             }
         } else {
-            $error = "Error uploading CSV file.";
+            // Insert new player into the database
+            $insert_player_stmt = $db->prepare('INSERT INTO players (first_name, last_name, team, bats, throws, is_catcher, is_infielder, is_outfielder, is_pitcher, is_dh, no_card, fantasy_team_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+            $inserted = $insert_player_stmt->execute([$first_name, $last_name, $team, $bats, $throws, $is_catcher, $is_infielder, $is_outfielder, $is_pitcher, $is_dh, $no_card, $fantasy_team_id]);
+
+            if ($inserted) {
+                $success = "New player " . htmlspecialchars($first_name) . " " . htmlspecialchars($last_name) . " added successfully.";
+                header('Location: ' . $_SERVER['PHP_SELF'] . '?team=' . $fantasy_team_id); // Redirect to reload the page
+                exit;
+            } else {
+                $error = "Failed to add new player. Please try again.";
+            }
         }
     }
+}
+// Handle CSV upload
+if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['upload_csv'])) {
+    if (isset($_FILES['csv_file']) && $_FILES['csv_file']['error'] == 0) {
+        $csv_file = $_FILES['csv_file']['tmp_name'];
+        $handle = fopen($csv_file, 'r');
 
-    // Fetch the user's team roster again to refresh the list
-    $team_id = isset($_GET['team']) ? $_GET['team'] : $user['team_id'];
-    $roster_stmt = $db->prepare('SELECT * FROM players WHERE fantasy_team_id = ? ORDER BY last_name');
-    $roster_stmt->execute([$team_id]);
-    $roster = $roster_stmt->fetchAll(PDO::FETCH_ASSOC);
+        // Read the first line
+        $header = fgets($handle);
 
-    function formatPlayerName($player) {
-        $name = htmlspecialchars($player['first_name'] . ' ' . $player['last_name']);
-        if ($player['bats'] == 'L' && !$player['is_pitcher'] || ($player['is_pitcher'] && $player['throws'] == 'L')) {
-            $name .= '*';
+        // Strip BOM if present
+        $bom = pack('H*', 'EFBBBF');
+        $header = preg_replace("/^$bom/", '', $header);
+
+        // Parse the CSV header
+        $header = str_getcsv($header);
+        // Validate CSV format
+        $expected_columns = ['First Name', 'Last Name', 'MLB Team', 'Position', 'Bats', 'Throws', 'No Card'];
+
+        // Check for header column mismatch
+        $missing_columns = array_diff($expected_columns, $header);
+        if (!empty($missing_columns)) {
+            $error = "Invalid CSV format. Missing columns: " . implode(', ', $missing_columns);
+            fclose($handle);
+        } else {
+            while (($data = fgetcsv($handle, 1000, ',')) !== FALSE) {
+                // Validate row length
+                if (count($data) < count($expected_columns) - 1) { // Allow missing 'No Card'
+                    $error = "Invalid CSV format. Each row must have at least " . (count($expected_columns) - 1) . " columns.";
+                    fclose($handle);
+                    break;
+                }
+
+                $first_name = $data[0];
+                $last_name = $data[1];
+                $team = $data[2];
+                $position = $data[3];
+                $bats = $data[4];
+                $throws = $data[5];
+                $no_card = isset($data[6]) && strtoupper($data[6]) == 'Y' ? 1 : 0; // Translate 'Y' to 1, default to 0 if not set
+                $fantasy_team_id = $user['team_id'];
+
+                // Set position flags
+                $is_catcher = $position === 'C' ? 1 : 0;
+                $is_infielder = $position === 'IF' ? 1 : 0;
+                $is_outfielder = $position === 'OF' ? 1 : 0;
+                $is_pitcher = $position === 'P' ? 1 : 0;
+                $is_dh = $position === 'DH' ? 1 : 0; // Add this flag for DH
+
+                // Insert player into the database
+                $insert_player_stmt = $db->prepare('INSERT INTO players (first_name, last_name, team, bats, throws, is_catcher, is_infielder, is_outfielder, is_pitcher, is_dh, no_card, fantasy_team_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+                $inserted = $insert_player_stmt->execute([$first_name, $last_name, $team, $bats, $throws, $is_catcher, $is_infielder, $is_outfielder, $is_pitcher, $is_dh, $no_card, $fantasy_team_id]);
+
+                if ($inserted) {
+                    $success = "CSV uploaded and players added successfully.";
+                } else {
+                    $error = "Failed to add new player. Please try again.";
+                    fclose($handle);
+                    break;
+                }
+            }
+            fclose($handle);
+            header('Location: ' . $_SERVER['PHP_SELF'] . '?team=' . $fantasy_team_id); // Redirect to reload the page
+            exit;
         }
-        if ($player['bats'] == 'S' && !$player['is_pitcher']) {
-            $name .= '@';
-        }
-        return $name;
+    } else {
+        $error = "Error uploading CSV file.";
     }
+}
+
+// Fetch the user's team roster again to refresh the list
+$team_id = isset($_GET['team']) ? $_GET['team'] : $user['team_id'];
+$roster_stmt = $db->prepare('SELECT * FROM players WHERE fantasy_team_id = ? ORDER BY last_name');
+$roster_stmt->execute([$team_id]);
+$roster = $roster_stmt->fetchAll(PDO::FETCH_ASSOC);
+
+function formatPlayerName($player) {
+    $name = htmlspecialchars($player['first_name'] . ' ' . $player['last_name']);
+    if ($player['bats'] == 'L' && !$player['is_pitcher'] || ($player['is_pitcher'] && $player['throws'] == 'L')) {
+        $name .= '*';
+    }
+    if ($player['bats'] == 'S' && !$player['is_pitcher']) {
+        $name .= '@';
+    }
+    return $name;
+}
 ?>
 <!DOCTYPE html>
 <html>
@@ -263,6 +261,9 @@
         }
         .roster-box tr:hover {
             background-color: #f1f1f1; /* Optional: Adds a highlight effect on hover */
+        }
+        .header-row, .non-selectable {
+            user-select: none;
         }
     </style>
 </head>
@@ -358,20 +359,26 @@
             <input type="hidden" id="delete_player_id" name="delete_player_id">
             <button type="button" id="deleteButton" style="background-color: red; color: white;">Delete Player</button>
         </form>
+
         <!-- Rest of the roster box code -->
         <div class="roster-box">
             <table>
                 <thead>
                     <tr>
-                        <th>Player Name</th>
-                        <th>MLB Team</th>
+                        <th class="non-selectable">Player Name</th>
+                        <th class="non-selectable">MLB Team</th>
                     </tr>
                 </thead>
-                <tbody id="C"></tbody>
-                <tbody id="IF"></tbody>
-                <tbody id="OF"></tbody>
-                <tbody id="DH"></tbody>
-                <tbody id="P"></tbody>
+                <tbody id="non_pitchers">
+                    <tr class="header-row">
+                        <td colspan="2"><b>All Players (Non-Pitchers)</b></td>
+                    </tr>
+                </tbody>
+                <tbody id="pitchers">
+                    <tr class="header-row">
+                        <td colspan="2"><b>Pitchers</b></td>
+                    </tr>
+                </tbody>
             </table>
         </div>
     </div>
@@ -419,14 +426,20 @@ document.addEventListener('DOMContentLoaded', function () {
     const roster = <?= json_encode($roster) ?>;
     loadRoster(roster);
 });
+
 function loadRoster(roster) {
-    const positions = ['C', 'IF', 'OF', 'DH', 'P'];
+    const positions = ['non_pitchers', 'pitchers'];
+
+    // Clear existing lists
     positions.forEach(position => {
         const element = document.getElementById(position);
         if (element) {
-            element.innerHTML = ''; // Clear existing list
+            element.innerHTML = '';
         }
     });
+
+    const nonPitchers = []; // Collect non-pitchers separately
+    const pitchers = []; // Collect pitchers separately
 
     roster.forEach(player => {
         const tr = document.createElement('tr');
@@ -440,14 +453,26 @@ function loadRoster(roster) {
             populateForm(player);
         });
 
-        let position = '';
-        if (player.is_catcher) position = 'C';
-        else if (player.is_infielder) position = 'IF';
-        else if (player.is_outfielder) position = 'OF';
-        else if (player.is_dh) position = 'DH';
-        else if (player.is_pitcher) position = 'P';
+        if (player.is_pitcher) {
+            pitchers.push({ player, tr });
+        } else {
+            nonPitchers.push({ player, tr });
+        }
+    });
 
-        const element = document.getElementById(position);
+    // Sort non-pitchers alphabetically by last name
+    nonPitchers.sort((a, b) => a.player.last_name.localeCompare(b.player.last_name));
+    nonPitchers.forEach(({ tr }) => {
+        const element = document.getElementById('non_pitchers');
+        if (element) {
+            element.appendChild(tr);
+        }
+    });
+
+    // Sort pitchers alphabetically by last name
+    pitchers.sort((a, b) => a.player.last_name.localeCompare(b.player.last_name));
+    pitchers.forEach(({ tr }) => {
+        const element = document.getElementById('pitchers');
         if (element) {
             element.appendChild(tr);
         }

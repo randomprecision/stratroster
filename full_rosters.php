@@ -35,11 +35,10 @@ foreach ($users as $user) {
         $team_emails[$user['team_id']] = $user['email'];
     }
 }
-
 $team_players = [];
 $team_player_counts = [];
 foreach ($players as $player) {
-    $name = htmlspecialchars_decode($player['first_name'] . ' ' . $player['last_name']); // Use htmlspecialchars_decode
+    $name = htmlspecialchars_decode($player['first_name'] . ' ' . $player['last_name']);
     if ($player['is_pitcher'] && $player['throws'] == 'L') {
         $name .= '*';
     } elseif (!$player['is_pitcher'] && $player['bats'] == 'L') {
@@ -53,7 +52,7 @@ foreach ($players as $player) {
     }
 
     // Include MLB team information
-    $mlb_team = htmlspecialchars_decode($player['mlb_team']); // Use htmlspecialchars_decode
+    $mlb_team = htmlspecialchars_decode($player['mlb_team']);
     $team_players[$player['fantasy_team_id']][] = ['name' => $name, 'mlb_team' => $mlb_team];
 
     $team_player_counts[$player['fantasy_team_id']]['total'] = isset($team_player_counts[$player['fantasy_team_id']]['total']) ? $team_player_counts[$player['fantasy_team_id']]['total'] + 1 : 1;
@@ -66,6 +65,8 @@ foreach ($players as $player) {
         $team_players[$player['fantasy_team_id']]['Infielders'][] = ['name' => $name, 'mlb_team' => $mlb_team];
     } elseif ($player['is_outfielder']) {
         $team_players[$player['fantasy_team_id']]['Outfielders'][] = ['name' => $name, 'mlb_team' => $mlb_team];
+    } elseif ($player['is_dh']) {
+        $team_players[$player['fantasy_team_id']]['Designated Hitters'][] = ['name' => $name, 'mlb_team' => $mlb_team];
     }
 }
 
@@ -74,7 +75,6 @@ $team_draft_picks = [];
 foreach ($draft_picks as $draft_pick) {
     $team_draft_picks[$draft_pick['team_id']][$draft_pick['year']][] = $draft_pick;
 }
-
 // Function to format draft picks as ranges with team name
 function format_draft_picks($picks, $team_names, $team_id) {
     $ranges = [];
@@ -106,7 +106,7 @@ function format_draft_picks($picks, $team_names, $team_id) {
             $current_team_name = $original_team_name;
         }
     }
-    
+
     if (!empty($current_range)) {
         if (count($current_range) > 1) {
             $ranges[] = "$current_team_name round " . $current_range[0] . '-' . $current_range[count($current_range) - 1];
@@ -124,13 +124,12 @@ function getPlayerCounts($players) {
         'Catchers' => count($players['Catchers'] ?? []),
         'Infielders' => count($players['Infielders'] ?? []),
         'Outfielders' => count($players['Outfielders'] ?? []),
+        'Designated Hitters' => count($players['Designated Hitters'] ?? []),
         'Pitchers' => count($players['Pitchers'] ?? []),
     ];
     return $counts;
 }
-
 ?>
-
 <!DOCTYPE html>
 <html>
 <head>
@@ -150,7 +149,7 @@ function getPlayerCounts($players) {
         display: grid;
         grid-template-columns: 1fr 1fr;
         gap: 20px;
-        text-align: left; /* Left align the content */
+        text-align: left;
         padding: 20px;
         border: 2px solid black;
         border-radius: 10px;
@@ -228,7 +227,6 @@ function getPlayerCounts($players) {
                     <li>No infielders found for this team.</li>
                 <?php endif; ?>
             </ul>
-
             <h3>Outfielders - <?= $counts['Outfielders'] ?></h3>
             <ul>
                 <?php if (!empty($team_players[$team['id']]['Outfielders'])): ?>
@@ -242,6 +240,18 @@ function getPlayerCounts($players) {
                     <li>No outfielders found for this team.</li>
                 <?php endif; ?>
             </ul>
+
+            <?php if (isset($team_players[$team['id']]['Designated Hitters']) && !empty($team_players[$team['id']]['Designated Hitters'])): ?>
+                <h3>Designated Hitters - <?= $counts['Designated Hitters'] ?></h3>
+                <ul>
+                    <?php foreach ($team_players[$team['id']]['Designated Hitters'] as $dh): ?>
+                        <li class="player-list">
+                            <span><?= htmlspecialchars($dh['name']) ?></span>
+                            <span><?= htmlspecialchars($dh['mlb_team']) ?></span>
+                        </li>
+                    <?php endforeach; ?>
+                </ul>
+            <?php endif; ?>
 
             <h3>Pitchers - <?= $counts['Pitchers'] ?></h3>
             <ul>
@@ -271,10 +281,8 @@ function getPlayerCounts($players) {
                 <?php endif; ?>
             </ul>
 
-
             <p>Total Players: <?= $team_player_counts[$team['id']]['total'] ?? 0 ?>, Total No Cards: <?= $team_player_counts[$team['id']]['no_cards'] ?? 0 ?></p>
         </div>
-
         <?php endforeach; ?>
     </div>
     <div class="footer">
@@ -282,3 +290,4 @@ function getPlayerCounts($players) {
     </div>
 </body>
 </html>
+
