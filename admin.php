@@ -8,9 +8,29 @@ if (!isset($_SESSION['user_id']) || $_SESSION['is_admin'] != 1) {
     exit;
 }
 
-$db = new PDO("sqlite:./stratroster.db");
-$db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-$db->exec('PRAGMA busy_timeout = 10000'); // Set busy timeout to 10 seconds
+class Database {
+    private static $db = null;
+
+    public static function getConnection() {
+        if (self::$db === null) {
+            try {
+                self::$db = new PDO("sqlite:./stratroster.db");
+                self::$db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+                self::$db->exec('PRAGMA busy_timeout = 10000'); // Set busy timeout to 10 seconds
+            } catch (PDOException $e) {
+                error_log($e->getMessage());
+                die("Database error: " . htmlspecialchars($e->getMessage()));
+            }
+        }
+        return self::$db;
+    }
+
+    public static function closeConnection() {
+        self::$db = null;
+    }
+}
+
+$db = Database::getConnection();
 
 $current_year = date("Y"); // Define current_year before using it
 
@@ -22,7 +42,6 @@ $league_name = isset($league['name']) ? $league['name'] : 'My League';
 $draft_rounds = isset($league['draft_rounds']) ? $league['draft_rounds'] : 10; // Default to 10 if not set
 $draft_year = isset($league['draft_year']) ? $league['draft_year'] : $current_year;
 $maint_mode = isset($league['maint_mode']) ? $league['maint_mode'] : 0;
-
 // Fetch the list of teams
 $teams_stmt = $db->query('SELECT * FROM teams ORDER BY team_name');
 $teams = $teams_stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -65,7 +84,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['edit_league_properties
             $settings_message = "Invalid custom color. Please enter a valid 6-digit hex code.";
         }
     }
-
     if (!isset($settings_message)) {
         try {
             // Update league properties in the database
@@ -95,6 +113,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['edit_league_properties
         echo "<div class='confirmation'>League properties applied successfully.</div>";
     }
 }
+
 // Handle form submission for adding a new team
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['add_team'])) {
     $new_team_name = trim($_POST['new_team_name']);
@@ -112,7 +131,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['add_team'])) {
             if ($insert_team_stmt->execute([$new_team_name])) {
                 $team_id = $db->lastInsertId(); // Get the ID of the newly inserted team
                 $message = "New team " . htmlspecialchars($new_team_name) . " added successfully.";
-
                 // Retrieve league properties
                 $league_stmt = $db->query('SELECT draft_year, draft_rounds FROM league_properties LIMIT 1');
                 $league = $league_stmt->fetch(PDO::FETCH_ASSOC);
@@ -144,6 +162,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['add_team'])) {
         $message = "Error checking for existing team name.";
     }
 }
+
 // Handle form submission for assigning users to teams
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['assign_team'])) {
     $team_assignment_message = '';
@@ -157,7 +176,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['assign_team'])) {
                 // Update user's team assignment in the database
                 $update_team_stmt = $db->prepare('UPDATE users SET team_id = ? WHERE id = ?');
                 $update_team_stmt->execute([$team_id, $user_id]);
-
                 // Get team name
                 $team_name = 'None';
                 if ($team_id !== null) {
@@ -179,7 +197,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['assign_team'])) {
     $users_stmt = $db->query('SELECT u.id, u.username, u.team_id, t.team_name FROM users u LEFT JOIN teams t ON u.team_id = t.id ORDER BY u.username');
     $users = $users_stmt->fetchAll(PDO::FETCH_ASSOC);
 }
-
 // Handle form submission for managing user details
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     if (isset($_POST['save_changes']) && isset($_POST['manage_user_id'])) {
@@ -243,7 +260,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['new_username']) && iss
         $users = $users_stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 }
-
 // Handle form submission for managing team details
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     if (isset($_POST['save_team_changes']) && isset($_POST['manage_team_id'])) {
@@ -251,30 +267,43 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         $manage_team_name = $_POST['manage_team_name'];
 
         // Update team details in the database
-        $update_team_stmt = $db->prepare('UPDATE teams SET team_name = ? WHERE id = ?');
-        $update_team_stmt->execute([$manage_team_name, $manage_team_id]);
-
-        $message = "Team details updated successfully.";
+        try {
+            executeWithRetry($db, 'UPDATE teams SET team_name = ? WHERE id = ?', [$manage_team_name, $manage_team_id]);
+            $message = "Team details updated successfully.";
+        } catch (PDOException $e) {
+            error_log("Error updating team: " . $e->getMessage());
+            $message = "Error updating team details. Please try again later.";
+        }
 
         // Refresh the teams list after updating a team
-        $teams_stmt = $db->query('SELECT * FROM teams ORDER BY team_name');
-        $teams = $teams_stmt->fetchAll(PDO::FETCH_ASSOC);
+        try {
+            $teams_stmt = executeWithRetry($db, 'SELECT * FROM teams ORDER BY team_name');
+            $teams = $teams_stmt->fetchAll(PDO::FETCH_ASSOC);
+        } catch (PDOException $e) {
+            error_log("Error fetching teams: " . $e->getMessage());
+            $teams = [];
+        }
     } elseif (isset($_POST['delete_team']) && isset($_POST['manage_team_id'])) {
         $manage_team_id = $_POST['manage_team_id'];
 
         // Delete draft picks where the team is involved, unless original_team_id is set
-        $delete_draft_picks_stmt = $db->prepare('DELETE FROM draft_picks WHERE team_id = ? AND original_team_id IS NULL');
-        $delete_draft_picks_stmt->execute([$manage_team_id]);
-
-        // Delete team from the database
-        $delete_team_stmt = $db->prepare('DELETE FROM teams WHERE id = ?');
-        $delete_team_stmt->execute([$manage_team_id]);
-
-        $message = "Team and its associated draft picks deleted successfully.";
+        try {
+            executeWithRetry($db, 'DELETE FROM draft_picks WHERE team_id = ? AND original_team_id IS NULL', [$manage_team_id]);
+            executeWithRetry($db, 'DELETE FROM teams WHERE id = ?', [$manage_team_id]);
+            $message = "Team and its associated draft picks deleted successfully.";
+        } catch (PDOException $e) {
+            error_log("Error deleting team: " . $e->getMessage());
+            $message = "Error deleting team. Please try again later.";
+        }
 
         // Refresh the teams list after deleting a team
-        $teams_stmt = $db->query('SELECT * FROM teams ORDER BY team_name');
-        $teams = $teams_stmt->fetchAll(PDO::FETCH_ASSOC);
+        try {
+            $teams_stmt = executeWithRetry($db, 'SELECT * FROM teams ORDER BY team_name');
+            $teams = $teams_stmt->fetchAll(PDO::FETCH_ASSOC);
+        } catch (PDOException $e) {
+            error_log("Error fetching teams: " . $e->getMessage());
+            $teams = [];
+        }
     }
 }
 // Handle form submission for assigning draft picks
@@ -294,41 +323,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['assign_draft_pick'])) 
 
     $message = "Draft pick successfully assigned from " . htmlspecialchars($teams[$from_team_id]['team_name']) . " to " . htmlspecialchars($teams[$to_team_id]['team_name']) . ".";
 }
-
-// Handle form submission for managing team details
-if ($_SERVER['REQUEST_METHOD'] == 'POST') {
-    if (isset($_POST['save_team_changes']) && isset($_POST['manage_team_id'])) {
-        $manage_team_id = $_POST['manage_team_id'];
-        $manage_team_name = $_POST['manage_team_name'];
-
-        // Update team details in the database
-        $update_team_stmt = $db->prepare('UPDATE teams SET team_name = ? WHERE id = ?');
-        $update_team_stmt->execute([$manage_team_name, $manage_team_id]);
-
-        $message = "Team details updated successfully.";
-
-        // Refresh the teams list after updating a team
-        $teams_stmt = $db->query('SELECT * FROM teams ORDER BY team_name');
-        $teams = $teams_stmt->fetchAll(PDO::FETCH_ASSOC);
-    } elseif (isset($_POST['delete_team']) && isset($_POST['manage_team_id'])) {
-        $manage_team_id = $_POST['manage_team_id'];
-
-        // Delete draft picks where the team is involved, unless original_team_id is set
-        $delete_draft_picks_stmt = $db->prepare('DELETE FROM draft_picks WHERE team_id = ? AND original_team_id IS NULL');
-        $delete_draft_picks_stmt->execute([$manage_team_id]);
-
-        // Delete team from the database
-        $delete_team_stmt = $db->prepare('DELETE FROM teams WHERE id = ?');
-        $delete_team_stmt->execute([$manage_team_id]);
-
-        $message = "Team and its associated draft picks deleted successfully.";
-
-        // Refresh the teams list after deleting a team
-        $teams_stmt = $db->query('SELECT * FROM teams ORDER BY team_name');
-        $teams = $teams_stmt->fetchAll(PDO::FETCH_ASSOC);
-    }
-}
-
 // Function to backup the SQLite database and serve it for download
 function backupSQLiteDatabase($db_path) {
     // Generate the timestamped filename
@@ -428,6 +422,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['confirm_init']) && $_P
         }, 5000); // Redirect after 5 seconds
     </script>";
 }
+
 // Handle form submission for reset draft picks
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['reset_draft_picks'])) {
     $selected_team_id = $_POST['reset_team_id'];
@@ -464,14 +459,13 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['reset_draft_picks'])) 
         $reset_message = "Draft picks for the selected team have been reset and reassigned.";
     }
 }
-
 if (!isset($_SESSION['is_admin']) || !$_SESSION['is_admin']) {
     header('Location: login.php');
     exit;
 }
 
 try {
-    $db = new PDO("sqlite:./stratroster.db");
+    $db = Database::getConnection();
     $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
     $db->exec('PRAGMA busy_timeout = 10000'); // Set busy timeout to 10 seconds
 
@@ -495,7 +489,7 @@ try {
     }
 
     // Ensure the connection is closed after the operation
-    $db = null;
+    Database::closeConnection();
 } catch (PDOException $e) {
     error_log($e->getMessage());
     die("Database error: " . htmlspecialchars($e->getMessage()));
@@ -547,7 +541,10 @@ ini_set('error_log', './error.log');
     </style>
 </head>
 <body>
-
+<?php
+// Close the database connection
+Database::closeConnection();
+?>
 <!-- User Team Assignment Section -->
 <div class="form-container">
     <h3>Assign Users to Teams</h3>
@@ -593,6 +590,7 @@ ini_set('error_log', './error.log');
         <button type="submit" name="add_team">Add Team</button>
     </form>
 </div>
+
 <!-- Edit League Properties Section -->
 <div class="form-container">
     <h3>Edit League Properties</h3>
@@ -639,6 +637,7 @@ ini_set('error_log', './error.log');
         <button type="submit" name="edit_league_properties">Apply</button>
     </form>
 </div>
+
 <script>
 function toggleCustomColorInput(value) {
     var customColorInput = document.getElementById('custom_background_color');
@@ -687,6 +686,7 @@ window.onload = function() {
         </form>
     <?php endif; ?>
 </div>
+
 <!-- Manage Teams Section -->
 <div class="form-container">
     <h3>Manage Teams</h3>
@@ -715,7 +715,6 @@ window.onload = function() {
         </form>
     <?php endif; ?>
 </div>
-
 <!-- Create New User Section -->
 <div class="form-container">
     <h3>Create New User</h3>
@@ -731,6 +730,7 @@ window.onload = function() {
         <button type="submit">Create User</button>
     </form>
 </div>
+
 <!-- Assign Draft Picks Section -->
 <div class="form-container">
     <h3>Assign Draft Pick</h3>
@@ -759,7 +759,6 @@ window.onload = function() {
         <button type="submit" name="assign_draft_pick">Assign Draft Pick</button>
     </form>
 </div>
-
 <!-- Reset Draft Picks Section -->
 <div class="form-container">
     <h3>Reset Draft Picks</h3>
@@ -778,45 +777,6 @@ window.onload = function() {
 <?php if (isset($reset_message)): ?>
     <div class="confirmation"><?= $reset_message ?></div>
 <?php endif; ?>
-<script>
-    function confirmResetDraftPicks() {
-        const teamSelect = document.getElementById('reset_team_id');
-        const selectedTeam = teamSelect.options[teamSelect.selectedIndex].text;
-        if (teamSelect.value === 'all') {
-            return confirm(`This will reset the draft picks for the entire league. Are you sure you want to continue?`);
-        } else {
-            return confirm(`This will reset the draft picks for ${selectedTeam}. Are you sure you want to continue?`);
-        }
-    }
-</script>
-
-<!-- Maintenance Mode Link -->
-<div class="form-container">
-    <h3>Maintenance Mode</h3>
-    <p><a href="maint_mode.php">Set Maintenance Mode</a></p>
-</div>
-
-<!-- Backup Database Section -->
-<div class="form-container">
-    <h3>Backup Database</h3>
-    <form method="GET">
-        <input type="hidden" name="backup" value="true">
-        <button type="submit">Backup Database</button>
-    </form>
-</div>
-
-<!-- Initialize Database Section -->
-<div class="form-container">
-    <h3>Initialize Database (you will be logged out)</h3>
-    <form method="POST" action="admin.php">
-        <label for="confirm_init">Type 'YES' to confirm initialization:</label>
-        <input type="text" id="confirm_init" name="confirm_init" required>
-        <button type="submit">Initialize Database</button>
-    </form>
-</div>
-<p class="center"><a href="dashboard.php">Back to Dashboard</a></p>
-</body>
-</html>
 
 <script>
 const teams = <?= json_encode($teams) ?>.reduce((acc, team) => {
@@ -852,8 +812,36 @@ document.addEventListener('DOMContentLoaded', function() {
     updateDraftPicks();
 });
 </script>
+<!-- Maintenance Mode Link -->
+<div class="form-container">
+    <h3>Maintenance Mode</h3>
+    <p><a href="maint_mode.php">Set Maintenance Mode</a></p>
+</div>
+
+<!-- Backup Database Section -->
+<div class="form-container">
+    <h3>Backup Database</h3>
+    <form method="GET">
+        <input type="hidden" name="backup" value="true">
+        <button type="submit">Backup Database</button>
+    </form>
+</div>
+
+<!-- Initialize Database Section -->
+<div class="form-container">
+    <h3>Initialize Database (you will be logged out)</h3>
+    <form method="POST" action="admin.php">
+        <label for="confirm_init">Type 'YES' to confirm initialization:</label>
+        <input type="text" id="confirm_init" name="confirm_init" required>
+        <button type="submit">Initialize Database</button>
+    </form>
+</div>
+<p class="center"><a href="dashboard.php">Back to Dashboard</a></p>
+</body>
+</html>
 
 <?php
 // Close the database connection
-$db = null;
+Database::closeConnection();
 ?>
+
