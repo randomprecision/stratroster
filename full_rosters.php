@@ -135,6 +135,7 @@ function getPlayerCounts($players) {
 <head>
     <title>Full Rosters</title>
     <style>
+    /* Your existing styles */
     body {
         background-color: <?= htmlspecialchars($background_color) ?>;
         font-family: 'Lato', sans-serif;
@@ -187,10 +188,37 @@ function getPlayerCounts($players) {
     .player-list span {
         flex: 1;
     }
+
+    /* Add these new styles for the search function */
+    .search-container {
+        display: flex;
+        justify-content: center;
+        margin: 20px;
+    }
+    .search-input {
+        padding: 10px;
+        width: 200px;
+        border: 1px solid black;
+        border-radius: 5px;
+    }
+    .search-button {
+        padding: 10px;
+        margin-left: 10px;
+        border: none;
+        border-radius: 5px;
+        background-color: blue;
+        color: white;
+        cursor: pointer;
+    }
     </style>
 </head>
 <body>
-    <div class="roster-container">
+    <!-- Add this section for search functionality in the body -->
+    <div class="search-container">
+        <input type="text" class="search-input" placeholder="Search for players..." id="search-input" onkeyup="searchPlayers()">
+    </div>
+
+    <div class="roster-container" id="roster-container">
         <?php foreach ($teams as $team): ?>
             <div class="team">
             <h2><?= htmlspecialchars($team['team_name']) ?></h2>
@@ -268,12 +296,12 @@ function getPlayerCounts($players) {
             </ul>
 
             <h3>Draft Picks</h3>
-            <ul>
+            <ul class="draft-picks">
                 <?php if (!empty($team_draft_picks[$team['id']])): ?>
                     <?php foreach ($team_draft_picks[$team['id']] as $year => $picks): ?>
                         <li><strong><?= htmlspecialchars($year) ?></strong></li>
                         <ul>
-                            <li><?= format_draft_picks($picks, $team_names, $team['id']) ?></li>
+                            <li class="pick-list"><?= format_draft_picks($picks, $team_names, $team['id']) ?></li>
                         </ul>
                     <?php endforeach; ?>
                 <?php else: ?>
@@ -288,6 +316,38 @@ function getPlayerCounts($players) {
     <div class="footer">
         <p><a href="dashboard.php">Back to Dashboard</a></p>
     </div>
+    
+    <script>
+    function searchPlayers() {
+        const input = document.getElementById('search-input').value.toLowerCase();
+        const rosterContainer = document.getElementById('roster-container');
+        const teams = rosterContainer.querySelectorAll('.team');
+
+        teams.forEach(team => {
+            const players = team.querySelectorAll('.player-list span:first-child');
+            const draftPicks = team.querySelector('.draft-picks');
+            let found = false;
+
+            players.forEach(player => {
+                if (player.textContent.toLowerCase().includes(input)) {
+                    found = true;
+                    player.parentElement.style.display = '';
+                } else {
+                    player.parentElement.style.display = 'none';
+                }
+            });
+
+            if (!found) {
+                draftPicks.style.display = 'none';
+                team.style.display = 'none';
+            } else {
+                draftPicks.style.display = 'none';
+                team.style.display = '';
+            }
+        });
+    }
+
+    document.getElementById('search-input').addEventListener('keyup', searchPlayers);
+    </script>
 </body>
 </html>
-
