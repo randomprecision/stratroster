@@ -176,7 +176,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         }
         .selectable-box.selected {
             border-color: black; /* Add black border for selected items */
-            background-color: #f0f0f0;
+            background-color: rgba(255, 255, 0, 0.8); /* Use yellow with increased opacity */
         }
         .recent-trades-table {
             width: 100%;
@@ -282,7 +282,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 </div>
 <p class="center"><a href="dashboard.php">Back to Dashboard</a></p>
 </body>
-</html>
 <script>
     const teams = <?= json_encode($teams) ?>.reduce((acc, team) => {
         acc[team.id] = team;
@@ -420,6 +419,4 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         }
     }
 </script>
-
-</body>
 </html>
