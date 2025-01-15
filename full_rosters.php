@@ -301,7 +301,7 @@ function getPlayerCounts($players) {
                     <?php foreach ($team_draft_picks[$team['id']] as $year => $picks): ?>
                         <li><strong><?= htmlspecialchars($year) ?></strong></li>
                         <ul>
-                            <li class="pick-list"><?= format_draft_picks($picks, $team_names, $team['id']) ?></li>
+                            <li><?= format_draft_picks($picks, $team_names, $team['id']) ?></li>
                         </ul>
                     <?php endforeach; ?>
                 <?php else: ?>
@@ -325,7 +325,7 @@ function getPlayerCounts($players) {
 
         teams.forEach(team => {
             const players = team.querySelectorAll('.player-list span:first-child');
-            const draftPicks = team.querySelector('.draft-picks');
+            const draftPicks = team.querySelectorAll('.draft-picks > li, .draft-picks > ul');
             let found = false;
 
             players.forEach(player => {
@@ -338,11 +338,15 @@ function getPlayerCounts($players) {
             });
 
             if (!found) {
-                draftPicks.style.display = 'none';
                 team.style.display = 'none';
             } else {
-                draftPicks.style.display = 'none';
                 team.style.display = '';
+            }
+
+            if (input === '') {
+                draftPicks.forEach(draftPick => draftPick.style.display = '');
+            } else {
+                draftPicks.forEach(draftPick => draftPick.style.display = 'none');
             }
         });
     }
