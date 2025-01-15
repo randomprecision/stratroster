@@ -35,16 +35,15 @@ $db = Database::getConnection();
 $current_year = date("Y"); // Define current_year before using it
 
 // Fetch current values for league properties
-$league_stmt = $db->query('SELECT background_color, name, draft_rounds, draft_year, maint_mode FROM league_properties LIMIT 1');
+$league_stmt = $db->query('SELECT background_color, name, draft_rounds, draft_year, maint_mode, options, no_cards_tradeable FROM league_properties LIMIT 1');
 $league = $league_stmt->fetch(PDO::FETCH_ASSOC);
 $background_color = isset($league['background_color']) ? $league['background_color'] : '#FFFFFF'; // Default to white if not set
 $league_name = isset($league['name']) ? $league['name'] : 'My League';
 $draft_rounds = isset($league['draft_rounds']) ? $league['draft_rounds'] : 10; // Default to 10 if not set
 $draft_year = isset($league['draft_year']) ? $league['draft_year'] : $current_year;
 $maint_mode = isset($league['maint_mode']) ? $league['maint_mode'] : 0;
-// Fetch the list of teams
-$teams_stmt = $db->query('SELECT * FROM teams ORDER BY team_name');
-$teams = $teams_stmt->fetchAll(PDO::FETCH_ASSOC);
+$options = isset($league['options']) ? $league['options'] : 0;
+$no_cards_tradeable = isset($league['no_cards_tradeable']) ? $league['no_cards_tradeable'] : 0;
 
 // Fetch the list of users
 $users_stmt = $db->query('SELECT u.id, u.username, u.team_id, t.team_name FROM users u LEFT JOIN teams t ON u.team_id = t.id ORDER BY u.username');
@@ -74,6 +73,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['edit_league_properties
     $draft_year = $_POST['draft_year'];
     $draft_rounds = $_POST['draft_rounds'];
     $background_color = $_POST['background_color'];
+    $options = $_POST['options'];
+    $no_cards_tradeable = isset($_POST['no_cards_tradeable']) ? 1 : 0;
 
     // Check for custom color
     if ($background_color === 'custom') {
@@ -88,8 +89,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['edit_league_properties
         try {
             // Update league properties in the database
             $db->beginTransaction();
-            $update_league_properties_stmt = $db->prepare('UPDATE league_properties SET name = ?, draft_year = ?, draft_rounds = ?, background_color = ? WHERE id = 1');
-            $update_league_properties_stmt->execute([$league_name, $draft_year, $draft_rounds, $background_color]);
+            $update_league_properties_stmt = $db->prepare('UPDATE league_properties SET name = ?, draft_year = ?, draft_rounds = ?, background_color = ?, options = ?, no_cards_tradeable = ? WHERE id = 1');
+            $update_league_properties_stmt->execute([$league_name, $draft_year, $draft_rounds, $background_color, $options, $no_cards_tradeable]);
 
             if ($update_league_properties_stmt->rowCount() > 0) {
                 $settings_message = "League properties updated successfully.";
@@ -109,6 +110,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['edit_league_properties
         $draft_year = $league['draft_year'];
         $draft_rounds = $league['draft_rounds'];
         $background_color = $league['background_color'];
+        $options = $league['options'];
+        $no_cards_tradeable = $league['no_cards_tradeable'] ? 'checked' : '';
 
         echo "<div class='confirmation'>League properties applied successfully.</div>";
     }
@@ -634,6 +637,12 @@ Database::closeConnection();
         </select>
         <input type="text" id="custom_background_color" name="custom_background_color" placeholder="Enter hex code" style="display:none;" value="<?= preg_match('/^#[a-fA-F0-9]{6}$/', $background_color) ? htmlspecialchars(ltrim($background_color, '#')) : '' ?>">
 
+        <label for="options">Options:</label>
+        <input type="number" id="options" name="options" value="<?= htmlspecialchars($options) ?>" required>
+        
+        <label>No Card Rights Tradeable:</label>
+        <input type="checkbox" id="no_cards_tradeable" name="no_cards_tradeable" <?= $no_cards_tradeable ? 'checked' : '' ?>>
+
         <button type="submit" name="edit_league_properties">Apply</button>
     </form>
 </div>
@@ -651,7 +660,6 @@ window.onload = function() {
     toggleCustomColorInput(document.getElementById('background_color').value);
 };
 </script>
-
 <!-- Manage Users Section -->
 <div class="form-container">
     <h3>Manage Users</h3>
@@ -844,4 +852,3 @@ document.addEventListener('DOMContentLoaded', function() {
 // Close the database connection
 Database::closeConnection();
 ?>
-
