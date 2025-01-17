@@ -3,11 +3,13 @@
 
 session_start();
 $db = new PDO("sqlite:./stratroster.db");
+$db->exec("PRAGMA busy_timeout = 5000");  // 5 seconds
 
 // Fetch the background color
 $league_stmt = $db->query('SELECT background_color FROM league_properties LIMIT 1');
 $league = $league_stmt->fetch(PDO::FETCH_ASSOC);
 $background_color = $league['background_color'];
+$league_stmt->closeCursor();  // Close cursor here
 
 if (!isset($_SESSION['user_id'])) {
     die("User is not logged in.");
@@ -17,6 +19,7 @@ $user_id = $_SESSION['user_id'];
 $user_stmt = $db->prepare('SELECT * FROM users WHERE id = ?');
 $user_stmt->execute([$user_id]);
 $user = $user_stmt->fetch(PDO::FETCH_ASSOC);
+$user_stmt->closeCursor();  // Close cursor here
 
 $team_assigned = isset($user['team_id']) && $user['team_id'] !== null && $user['team_id'] > 0;
 $user_has_team = $team_assigned ? true : false;
@@ -24,18 +27,12 @@ $user_has_team = $team_assigned ? true : false;
 // Fetch all teams for admin users
 $teams_stmt = $db->query('SELECT id, team_name FROM teams ORDER BY team_name');
 $teams = $teams_stmt->fetchAll(PDO::FETCH_ASSOC);
+$teams_stmt->closeCursor();  // Close cursor here
 
-// Define MLB teams
-$mlb_teams = [
-    "AL East" => ["BAL", "BOS", "NYA", "TBA", "TOR"],
-    "AL Central" => ["CHA", "CLE", "DET", "KCA", "MIN"],
-    "AL West" => ["HOU", "LAA", "OAK", "SEA", "TEX"],
-    "NL East" => ["ATL", "MIA", "NYN", "PHI", "WAS"],
-    "NL Central" => ["CHN", "CIN", "MIL", "PIT", "STL"],
-    "NL West" => ["ARI", "COL", "LAN", "SDN", "SFN"],
-    "Other" => ["IL", "FA"]
-];
-
+// Fetch MLB teams
+$mlb_teams_stmt = $db->query('SELECT * FROM mlb_teams ORDER BY team_name');
+$mlb_teams = $mlb_teams_stmt->fetchAll(PDO::FETCH_ASSOC);
+$mlb_teams_stmt->closeCursor();  // Close cursor here
 // Handle form submission for deleting a player
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['delete_player'])) {
     $delete_player_id = $_POST['delete_player_id'];
@@ -45,6 +42,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['delete_player'])) {
         // Delete the player from the database
         $delete_player_stmt = $db->prepare('DELETE FROM players WHERE id = ?');
         $deleted = $delete_player_stmt->execute([$delete_player_id]);
+        $delete_player_stmt->closeCursor();  // Close cursor here
+        $db = null; // Close the database connection
 
         // Check if delete was successful
         if ($deleted) {
@@ -59,6 +58,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['delete_player'])) {
         exit;
     }
 }
+
 // Handle form submission for adding/editing a player
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && !isset($_POST['delete_player'])) {
     if (isset($_POST['upload_csv'])) {
@@ -87,6 +87,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && !isset($_POST['delete_player'])) {
             // Update existing player
             $update_player_stmt = $db->prepare('UPDATE players SET first_name = ?, last_name = ?, team = ?, bats = ?, throws = ?, is_catcher = ?, is_infielder = ?, is_outfielder = ?, is_pitcher = ?, is_dh = ?, no_card = ? WHERE id = ?');
             $updated = $update_player_stmt->execute([$first_name, $last_name, $team, $bats, $throws, $is_catcher, $is_infielder, $is_outfielder, $is_pitcher, $is_dh, $no_card, $edit_player_id]);
+            $update_player_stmt->closeCursor();  // Close cursor here
+            $db = null; // Close the database connection
 
             if ($updated) {
                 $success = "Player " . htmlspecialchars($first_name) . " " . htmlspecialchars($last_name) . " updated successfully.";
@@ -99,6 +101,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && !isset($_POST['delete_player'])) {
             // Insert new player into the database
             $insert_player_stmt = $db->prepare('INSERT INTO players (first_name, last_name, team, bats, throws, is_catcher, is_infielder, is_outfielder, is_pitcher, is_dh, no_card, fantasy_team_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
             $inserted = $insert_player_stmt->execute([$first_name, $last_name, $team, $bats, $throws, $is_catcher, $is_infielder, $is_outfielder, $is_pitcher, $is_dh, $no_card, $fantasy_team_id]);
+            $insert_player_stmt->closeCursor();  // Close cursor here
+            $db = null; // Close the database connection
 
             if ($inserted) {
                 $success = "New player " . htmlspecialchars($first_name) . " " . htmlspecialchars($last_name) . " added successfully.";
@@ -161,6 +165,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['upload_csv'])) {
                 // Insert player into the database
                 $insert_player_stmt = $db->prepare('INSERT INTO players (first_name, last_name, team, bats, throws, is_catcher, is_infielder, is_outfielder, is_pitcher, is_dh, no_card, fantasy_team_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
                 $inserted = $insert_player_stmt->execute([$first_name, $last_name, $team, $bats, $throws, $is_catcher, $is_infielder, $is_outfielder, $is_pitcher, $is_dh, $no_card, $fantasy_team_id]);
+                $insert_player_stmt->closeCursor();  // Close cursor here
 
                 if ($inserted) {
                     $success = "CSV uploaded and players added successfully.";
@@ -184,6 +189,7 @@ $team_id = isset($_GET['team']) ? $_GET['team'] : $user['team_id'];
 $roster_stmt = $db->prepare('SELECT * FROM players WHERE fantasy_team_id = ? ORDER BY last_name');
 $roster_stmt->execute([$team_id]);
 $roster = $roster_stmt->fetchAll(PDO::FETCH_ASSOC);
+$roster_stmt->closeCursor(); // Close cursor here
 
 function formatPlayerName($player) {
     $name = htmlspecialchars($player['first_name'] . ' ' . $player['last_name']);
@@ -275,113 +281,107 @@ function formatPlayerName($player) {
     <?php elseif (isset($success)): ?>
         <p class="success"><?= $success ?></p>
     <?php endif; ?>
-
-    <div class="form-container">
-        <?php if ($user['is_admin']): ?>
-            <form method="GET" id="teamSelectForm">
-                <label for="team">Select Team:</label>
-                <select id="team" name="team" onchange="document.getElementById('teamSelectForm').submit()">
-                    <?php foreach ($teams as $team): ?>
-                        <option value="<?= $team['id'] ?>" <?= $team['id'] == $team_id ? 'selected' : '' ?>><?= htmlspecialchars($team['team_name']) ?></option>
-                    <?php endforeach; ?>
-                </select>
-            </form>
-        <?php endif; ?>
-        <form method="POST" enctype="multipart/form-data">
-            <label for="first_name">First Name:</label>
-            <input type="text" id="first_name" name="first_name" required><br><br>
-
-            <label for="last_name">Last Name:</label>
-            <input type="text" id="last_name" name="last_name" required><br><br>
-
-            <label for="team">MLB Team:</label>
-            <select id="team" name="team" required>
-                <?php foreach ($mlb_teams as $division => $teams): ?>
-                    <optgroup label="<?= htmlspecialchars($division) ?>">
-                        <?php foreach ($teams as $team): ?>
-                            <option value="<?= htmlspecialchars($team) ?>"><?= htmlspecialchars($team) ?></option>
-                        <?php endforeach; ?>
-                    </optgroup>
+<div class="form-container">
+    <?php if ($user['is_admin']): ?>
+        <form method="GET" id="teamSelectForm">
+            <label for="team">Select Team:</label>
+            <select id="team" name="team" onchange="document.getElementById('teamSelectForm').submit()">
+                <?php foreach ($teams as $team): ?>
+                    <option value="<?= $team['id'] ?>" <?= $team['id'] == $team_id ? 'selected' : '' ?>><?= htmlspecialchars($team['team_name']) ?></option>
                 <?php endforeach; ?>
-            </select><br><br>
-
-            <label for="bats">Bats:</label>
-            <select id="bats" name="bats" required>
-                <option value="R">R</option>
-                <option value="L">L</option>
-                <option value="S">S</option>
-            </select><br><br>
-
-            <label for="throws">Throws:</label>
-            <select id="throws" name="throws" required>
-                <option value="R">R</option>
-                <option value="L">L</option>
-            </select><br><br>
-
-            <label for="position">Position:</label>
-            <select id="position" name="position" required>
-                <option value="C">C</option>
-                <option value="IF">IF</option>
-                <option value="OF">OF</option>
-                <option value="DH">DH</option>
-                <option value="P">P</option>
-            </select><br><br>
-
-            <label for="no_card">No Card:</label>
-            <input type="checkbox" id="no_card" name="no_card"><br><br>
-
-            <input type="hidden" id="edit_player_id" name="edit_player_id" value="">
-
-            <button type="submit" id="submit-btn">Add Player</button><br><br>
-
-            <label for="csv_file">Upload CSV of Players:</label>
-            <input type="file" id="csv_file" name="csv_file" accept=".csv" onchange="toggleRequired()"><br><br>
-            <button type="submit" name="upload_csv">Upload CSV</button><br><br>
-
-            <div class="instructions-box">
-                <strong>CSV Format Instructions:</strong>
-                <p>Please format your CSV file with the following columns:</p>
-                <ul>
-                    <li><strong>First Name:</strong> Player's first name (e.g., John)</li>
-                    <li><strong>Last Name:</strong> Player's last name (e.g., Doe)</li>
-                    <li><strong>MLB Team:</strong> Player's MLB team (e.g., NYA). Use IL for multi-card players.</li>
-                    <li><strong>Position:</strong> C, IF, OF, DH, P</li>
-                    <li><strong>Bats:</strong> L, R, S</li>
-                    <li><strong>Throws:</strong> L, R</li>
-                    <li><strong>No Card:</strong> Y for No Card, else leave blank</li>
-                </ul>
-            </div>
-
-            <p class="center"><a href="dashboard.php">Back to Dashboard</a></p>
+            </select>
         </form>
-        <!-- Delete Form -->
-        <form id="deleteForm" method="POST">
-            <input type="hidden" id="delete_player_id" name="delete_player_id">
-            <button type="button" id="deleteButton" style="background-color: red; color: white;">Delete Player</button>
-        </form>
+    <?php endif; ?>
+    <form method="POST" enctype="multipart/form-data">
+        <label for="first_name">First Name:</label>
+        <input type="text" id="first_name" name="first_name" required><br><br>
 
-        <!-- Rest of the roster box code -->
-        <div class="roster-box">
-            <table>
-                <thead>
-                    <tr>
-                        <th class="non-selectable">Player Name</th>
-                        <th class="non-selectable">MLB Team</th>
-                    </tr>
-                </thead>
-                <tbody id="non_pitchers">
-                    <tr class="header-row">
-                        <td colspan="2"><b>All Players (Non-Pitchers)</b></td>
-                    </tr>
-                </tbody>
-                <tbody id="pitchers">
-                    <tr class="header-row">
-                        <td colspan="2"><b>Pitchers</b></td>
-                    </tr>
-                </tbody>
-            </table>
+        <label for="last_name">Last Name:</label>
+        <input type="text" id="last_name" name="last_name" required><br><br>
+
+        <label for="mlb_team">MLB Team:</label>
+        <select id="mlb_team" name="mlb_team" required>
+            <?php foreach ($mlb_teams as $team): ?>
+                <option value="<?= htmlspecialchars($team['team_name']) ?>"><?= htmlspecialchars($team['team_name']) ?></option>
+            <?php endforeach; ?>
+        </select><br><br>
+
+        <label for="bats">Bats:</label>
+        <select id="bats" name="bats" required>
+            <option value="R">R</option>
+            <option value="L">L</option>
+            <option value="S">S</option>
+        </select><br><br>
+
+        <label for="throws">Throws:</label>
+        <select id="throws" name="throws" required>
+            <option value="R">R</option>
+            <option value="L">L</option>
+        </select><br><br>
+
+        <label for="position">Position:</label>
+        <select id="position" name="position" required>
+            <option value="C">C</option>
+            <option value="IF">IF</option>
+            <option value="OF">OF</option>
+            <option value="DH">DH</option>
+            <option value="P">P</option>
+        </select><br><br>
+
+        <label for="no_card">No Card:</label>
+        <input type="checkbox" id="no_card" name="no_card"><br><br>
+
+        <input type="hidden" id="edit_player_id" name="edit_player_id" value="">
+
+        <button type="submit" id="submit-btn">Add Player</button><br><br>
+
+        <label for="csv_file">Upload CSV of Players:</label>
+        <input type="file" id="csv_file" name="csv_file" accept=".csv" onchange="toggleRequired()"><br><br>
+        <button type="submit" name="upload_csv">Upload CSV</button><br><br>
+
+        <div class="instructions-box">
+            <strong>CSV Format Instructions:</strong>
+            <p>Please format your CSV file with the following columns:</p>
+            <ul>
+                <li><strong>First Name:</strong> Player's first name (e.g., John)</li>
+                <li><strong>Last Name:</strong> Player's last name (e.g., Doe)</li>
+                <li><strong>MLB Team:</strong> Player's MLB team (e.g., NYA). Use IL for multi-card players.</li>
+                <li><strong>Position:</strong> C, IF, OF, DH, P</li>
+                <li><strong>Bats:</strong> L, R, S</li>
+                <li><strong>Throws:</strong> L, R</li>
+                <li><strong>No Card:</strong> Y for No Card, else leave blank</li>
+            </ul>
         </div>
+    <p class="center"><a href="dashboard.php">Back to Dashboard</a></p>
+    </form>
+    <!-- Delete Form -->
+    <form id="deleteForm" method="POST">
+        <input type="hidden" id="delete_player_id" name="delete_player_id">
+        <button type="button" id="deleteButton" style="background-color: red; color: white;">Delete Player</button>
+    </form>
+
+    <!-- Rest of the roster box code -->
+    <div class="roster-box">
+        <table>
+            <thead>
+                <tr>
+                    <th class="non-selectable">Player Name</th>
+                    <th class="non-selectable">MLB Team</th>
+                </tr>
+            </thead>
+            <tbody id="non_pitchers">
+                <tr class="header-row">
+                    <td colspan="2"><b>All Players (Non-Pitchers)</b></td>
+                </tr>
+            </tbody>
+            <tbody id="pitchers">
+                <tr class="header-row">
+                    <td colspan="2"><b>Pitchers</b></td>
+                </tr>
+            </tbody>
+        </table>
     </div>
+</div>
 </body>
 </html>
 <script>
@@ -426,7 +426,6 @@ document.addEventListener('DOMContentLoaded', function () {
     const roster = <?= json_encode($roster) ?>;
     loadRoster(roster);
 });
-
 function loadRoster(roster) {
     const positions = ['non_pitchers', 'pitchers'];
 
@@ -496,7 +495,7 @@ function formatPlayerName(player) {
 function populateForm(player) {
     document.getElementById('first_name').value = player.first_name;
     document.getElementById('last_name').value = player.last_name;
-    document.getElementById('team').value = player.team;
+    document.getElementById('mlb_team').value = player.team;  // Ensure this matches the dropdown ID
     document.getElementById('bats').value = player.bats;
     document.getElementById('throws').value = player.throws;
     document.getElementById('position').value = player.is_catcher ? 'C' : player.is_infielder ? 'IF' : player.is_outfielder ? 'OF' : player.is_dh ? 'DH' : player.is_pitcher ? 'P' : '';
@@ -510,10 +509,11 @@ function toggleRequired() {
     const csvFile = document.getElementById('csv_file');
     const firstName = document.getElementById('first_name');
     const lastName = document.getElementById('last_name');
-    const team = document.getElementById('team');
+    const team = document.getElementById('mlb_team');
     const bats = document.getElementById('bats');
     const throws = document.getElementById('throws');
     const position = document.getElementById('position');
+    
     if (csvFile.files.length > 0) {
         firstName.required = false;
         lastName.required = false;
