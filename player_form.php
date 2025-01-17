@@ -58,6 +58,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['delete_player'])) {
         exit;
     }
 }
+// Fetch the selected team ID for admin users
+$selected_team_id = isset($_GET['team']) ? $_GET['team'] : $user['team_id'];
 
 // Handle form submission for adding/editing a player
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && !isset($_POST['delete_player'])) {
@@ -72,9 +74,11 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && !isset($_POST['delete_player'])) {
         $throws = trim($_POST['throws']);
         $position = trim($_POST['position']);
         $no_card = isset($_POST['no_card']) ? 1 : 0;
-        $fantasy_team_id = $user['team_id'];  // Assign the fantasy_team_id from the user's team
+        
+        // Use the selected team ID for admin users
+        $fantasy_team_id = $user['is_admin'] ? $selected_team_id : $user['team_id'];
 
-        // Debug and validate required fields
+        // Validate required fields
         if (empty($first_name) || empty($last_name) || empty($team) || empty($bats) || empty($throws) || empty($position)) {
             $error = "All fields are required.";
             echo "Debug Info: First Name: $first_name, Last Name: $last_name, Team: $team, Bats: $bats, Throws: $throws, Position: $position, No Card: $no_card, Fantasy Team ID: $fantasy_team_id";
@@ -94,7 +98,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && !isset($_POST['delete_player'])) {
                 $updated = $update_player_stmt->execute([$first_name, $last_name, $team, $bats, $throws, $is_catcher, $is_infielder, $is_outfielder, $is_pitcher, $is_dh, $no_card, $edit_player_id]);
                 $update_player_stmt->closeCursor();  // Close cursor here
                 $db = null; // Close the database connection
-                
+
                 echo "Debug Info: Updated Player - First Name: $first_name, Last Name: $last_name, Team: $team, Bats: $bats, Throws: $throws, Position: $position, No Card: $no_card, Fantasy Team ID: $fantasy_team_id, Edit Player ID: $edit_player_id";
 
                 if ($updated) {
@@ -110,7 +114,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && !isset($_POST['delete_player'])) {
                 $inserted = $insert_player_stmt->execute([$first_name, $last_name, $team, $bats, $throws, $is_catcher, $is_infielder, $is_outfielder, $is_pitcher, $is_dh, $no_card, $fantasy_team_id]);
                 $insert_player_stmt->closeCursor();  // Close cursor here
                 $db = null; // Close the database connection
-                
+
                 echo "Debug Info: Inserted Player - First Name: $first_name, Last Name: $last_name, Team: $team, Bats: $bats, Throws: $throws, Position: $position, No Card: $no_card, Fantasy Team ID: $fantasy_team_id";
 
                 if ($inserted) {
