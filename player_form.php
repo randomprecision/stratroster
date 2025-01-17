@@ -64,56 +64,67 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && !isset($_POST['delete_player'])) {
     if (isset($_POST['upload_csv'])) {
         // CSV upload logic remains the same
     } else {
-        // Manual player submission logic
-        $first_name = $_POST['first_name'];
-        $last_name = $_POST['last_name'];
-        $team = $_POST['team'];
-        $bats = $_POST['bats'];
-        $throws = $_POST['throws'];
-        $position = $_POST['position'];
+        // Manual player submission logic with validation and debugging
+        $first_name = trim($_POST['first_name']);
+        $last_name = trim($_POST['last_name']);
+        $team = trim($_POST['mlb_team']);
+        $bats = trim($_POST['bats']);
+        $throws = trim($_POST['throws']);
+        $position = trim($_POST['position']);
         $no_card = isset($_POST['no_card']) ? 1 : 0;
         $fantasy_team_id = $user['team_id'];  // Assign the fantasy_team_id from the user's team
 
-        // Set position flags
-        $is_catcher = $position === 'C' ? 1 : 0;
-        $is_infielder = $position === 'IF' ? 1 : 0;
-        $is_outfielder = $position === 'OF' ? 1 : 0;
-        $is_pitcher = $position === 'P' ? 1 : 0;
-        $is_dh = $position === 'DH' ? 1 : 0; // Add this flag for DH
-
-        if (isset($_POST['edit_player_id']) && !empty($_POST['edit_player_id'])) {
-            $edit_player_id = $_POST['edit_player_id'];
-
-            // Update existing player
-            $update_player_stmt = $db->prepare('UPDATE players SET first_name = ?, last_name = ?, team = ?, bats = ?, throws = ?, is_catcher = ?, is_infielder = ?, is_outfielder = ?, is_pitcher = ?, is_dh = ?, no_card = ? WHERE id = ?');
-            $updated = $update_player_stmt->execute([$first_name, $last_name, $team, $bats, $throws, $is_catcher, $is_infielder, $is_outfielder, $is_pitcher, $is_dh, $no_card, $edit_player_id]);
-            $update_player_stmt->closeCursor();  // Close cursor here
-            $db = null; // Close the database connection
-
-            if ($updated) {
-                $success = "Player " . htmlspecialchars($first_name) . " " . htmlspecialchars($last_name) . " updated successfully.";
-                header('Location: ' . $_SERVER['PHP_SELF'] . '?team=' . $fantasy_team_id); // Redirect to reload the page
-                exit;
-            } else {
-                $error = "Failed to update player. Please try again.";
-            }
+        // Debug and validate required fields
+        if (empty($first_name) || empty($last_name) || empty($team) || empty($bats) || empty($throws) || empty($position)) {
+            $error = "All fields are required.";
+            echo "Debug Info: First Name: $first_name, Last Name: $last_name, Team: $team, Bats: $bats, Throws: $throws, Position: $position, No Card: $no_card, Fantasy Team ID: $fantasy_team_id";
         } else {
-            // Insert new player into the database
-            $insert_player_stmt = $db->prepare('INSERT INTO players (first_name, last_name, team, bats, throws, is_catcher, is_infielder, is_outfielder, is_pitcher, is_dh, no_card, fantasy_team_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
-            $inserted = $insert_player_stmt->execute([$first_name, $last_name, $team, $bats, $throws, $is_catcher, $is_infielder, $is_outfielder, $is_pitcher, $is_dh, $no_card, $fantasy_team_id]);
-            $insert_player_stmt->closeCursor();  // Close cursor here
-            $db = null; // Close the database connection
+            // Set position flags
+            $is_catcher = $position === 'C' ? 1 : 0;
+            $is_infielder = $position === 'IF' ? 1 : 0;
+            $is_outfielder = $position === 'OF' ? 1 : 0;
+            $is_pitcher = $position === 'P' ? 1 : 0;
+            $is_dh = $position === 'DH' ? 1 : 0; // Add this flag for DH
 
-            if ($inserted) {
-                $success = "New player " . htmlspecialchars($first_name) . " " . htmlspecialchars($last_name) . " added successfully.";
-                header('Location: ' . $_SERVER['PHP_SELF'] . '?team=' . $fantasy_team_id); // Redirect to reload the page
-                exit;
+            if (isset($_POST['edit_player_id']) && !empty($_POST['edit_player_id'])) {
+                $edit_player_id = $_POST['edit_player_id'];
+
+                // Update existing player
+                $update_player_stmt = $db->prepare('UPDATE players SET first_name = ?, last_name = ?, team = ?, bats = ?, throws = ?, is_catcher = ?, is_infielder = ?, is_outfielder = ?, is_pitcher = ?, is_dh = ?, no_card = ? WHERE id = ?');
+                $updated = $update_player_stmt->execute([$first_name, $last_name, $team, $bats, $throws, $is_catcher, $is_infielder, $is_outfielder, $is_pitcher, $is_dh, $no_card, $edit_player_id]);
+                $update_player_stmt->closeCursor();  // Close cursor here
+                $db = null; // Close the database connection
+                
+                echo "Debug Info: Updated Player - First Name: $first_name, Last Name: $last_name, Team: $team, Bats: $bats, Throws: $throws, Position: $position, No Card: $no_card, Fantasy Team ID: $fantasy_team_id, Edit Player ID: $edit_player_id";
+
+                if ($updated) {
+                    $success = "Player " . htmlspecialchars($first_name) . " " . htmlspecialchars($last_name) . " updated successfully.";
+                    header('Location: ' . $_SERVER['PHP_SELF'] . '?team=' . $fantasy_team_id); // Redirect to reload the page
+                    exit;
+                } else {
+                    $error = "Failed to update player. Please try again.";
+                }
             } else {
-                $error = "Failed to add new player. Please try again.";
+                // Insert new player into the database
+                $insert_player_stmt = $db->prepare('INSERT INTO players (first_name, last_name, team, bats, throws, is_catcher, is_infielder, is_outfielder, is_pitcher, is_dh, no_card, fantasy_team_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+                $inserted = $insert_player_stmt->execute([$first_name, $last_name, $team, $bats, $throws, $is_catcher, $is_infielder, $is_outfielder, $is_pitcher, $is_dh, $no_card, $fantasy_team_id]);
+                $insert_player_stmt->closeCursor();  // Close cursor here
+                $db = null; // Close the database connection
+                
+                echo "Debug Info: Inserted Player - First Name: $first_name, Last Name: $last_name, Team: $team, Bats: $bats, Throws: $throws, Position: $position, No Card: $no_card, Fantasy Team ID: $fantasy_team_id";
+
+                if ($inserted) {
+                    $success = "New player " . htmlspecialchars($first_name) . " " . htmlspecialchars($last_name) . " added successfully.";
+                    header('Location: ' . $_SERVER['PHP_SELF'] . '?team=' . $fantasy_team_id); // Redirect to reload the page
+                    exit;
+                } else {
+                    $error = "Failed to add new player. Please try again.";
+                }
             }
         }
     }
 }
+
 // Handle CSV upload
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['upload_csv'])) {
     if (isset($_FILES['csv_file']) && $_FILES['csv_file']['error'] == 0) {
@@ -495,7 +506,8 @@ function formatPlayerName(player) {
 function populateForm(player) {
     document.getElementById('first_name').value = player.first_name;
     document.getElementById('last_name').value = player.last_name;
-    document.getElementById('mlb_team').value = player.team;  // Ensure this matches the dropdown ID
+    // Ensure this matches the dropdown ID
+    document.getElementById('mlb_team').value = player.team;
     document.getElementById('bats').value = player.bats;
     document.getElementById('throws').value = player.throws;
     document.getElementById('position').value = player.is_catcher ? 'C' : player.is_infielder ? 'IF' : player.is_outfielder ? 'OF' : player.is_dh ? 'DH' : player.is_pitcher ? 'P' : '';
