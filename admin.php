@@ -67,6 +67,10 @@ $draft_year = $league['draft_year'] ?? date('Y');
 $draft_rounds = $league['draft_rounds'] ?? 10; // Default to 10 if not set
 $background_color = $league['background_color'] ?? '#FFFFFF'; // Default to white if not set
 
+// Fetch the list of teams
+$teams_stmt = $db->query('SELECT * FROM teams ORDER BY team_name');
+$teams = $teams_stmt->fetchAll(PDO::FETCH_ASSOC);
+
 // Handle form submission for editing league properties
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['edit_league_properties'])) {
     $league_name = $_POST['league_name'];
@@ -639,7 +643,7 @@ Database::closeConnection();
 
         <label for="options">Options:</label>
         <input type="number" id="options" name="options" value="<?= htmlspecialchars($options) ?>" required>
-        
+
         <label>No Card Rights Tradeable:</label>
         <input type="checkbox" id="no_cards_tradeable" name="no_cards_tradeable" <?= $no_cards_tradeable ? 'checked' : '' ?>>
 
@@ -723,6 +727,7 @@ window.onload = function() {
         </form>
     <?php endif; ?>
 </div>
+
 <!-- Create New User Section -->
 <div class="form-container">
     <h3>Create New User</h3>
@@ -758,7 +763,6 @@ window.onload = function() {
                 <option value="<?= $team['id'] ?>"><?= htmlspecialchars($team['team_name']) ?></option>
             <?php endforeach; ?>
         </select>
-
         <label for="draft_pick">Draft Pick:</label>
         <select id="draft_pick" name="draft_pick" required>
             <option value="">Select Draft Pick</option>
@@ -767,10 +771,11 @@ window.onload = function() {
         <button type="submit" name="assign_draft_pick">Assign Draft Pick</button>
     </form>
 </div>
+
 <!-- Reset Draft Picks Section -->
 <div class="form-container">
     <h3>Reset Draft Picks</h3>
-    <form method="POST" onsubmit="return confirmResetDraftPicks();">
+    <form method="POST" onsubmit="return confirm('Are you sure you want to reset the draft picks?');">
         <label for="reset_team_id">Select Team:</label>
         <select name="reset_team_id" id="reset_team_id" required>
             <option value="all">All Teams</option>
@@ -820,6 +825,7 @@ document.addEventListener('DOMContentLoaded', function() {
     updateDraftPicks();
 });
 </script>
+
 <!-- Maintenance Mode Link -->
 <div class="form-container">
     <h3>Maintenance Mode</h3>
@@ -844,6 +850,7 @@ document.addEventListener('DOMContentLoaded', function() {
         <button type="submit">Initialize Database</button>
     </form>
 </div>
+
 <p class="center"><a href="dashboard.php">Back to Dashboard</a></p>
 </body>
 </html>
@@ -852,3 +859,4 @@ document.addEventListener('DOMContentLoaded', function() {
 // Close the database connection
 Database::closeConnection();
 ?>
+
