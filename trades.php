@@ -14,7 +14,7 @@ if (!isset($_SESSION['is_admin']) || !$_SESSION['is_admin']) {
 }
 
 // Fetch all teams and sort them alphabetically by team name
-$teams_stmt = $db->query('SELECT * FROM teams ORDER BY team_name');
+$teams_stmt = $db->query('SELECT id, team_name, y1nc, y2nc FROM teams ORDER BY team_name');
 $teams = $teams_stmt->fetchAll(PDO::FETCH_ASSOC);
 
 // Create a map of team names by team ID
@@ -74,6 +74,13 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         $team_b_players = isset($_POST['team_b_player']) ? $_POST['team_b_player'] : [];
         $team_a_draft_picks = isset($_POST['team_a_draft_pick']) ? $_POST['team_a_draft_pick'] : [];
         $team_b_draft_picks = isset($_POST['team_b_draft_pick']) ? $_POST['team_b_draft_pick'] : [];
+        $team_a_no_card_rights = isset($_POST['team_a_no_card']) ? $_POST['team_a_no_card'] : [];
+        $team_b_no_card_rights = isset($_POST['team_b_no_card']) ? $_POST['team_b_no_card'] : [];
+        
+        // Fetch the no_cards_tradeable value
+        $tradeable_stmt = $db->query('SELECT no_cards_tradeable FROM league_properties LIMIT 1');
+        $tradeable = $tradeable_stmt->fetch(PDO::FETCH_ASSOC);
+        $no_cards_tradeable = $tradeable['no_cards_tradeable'];
 
         // Move players and draft picks between teams
         $move_players_stmt = $db->prepare('UPDATE players SET fantasy_team_id = ? WHERE id = ?');
@@ -92,12 +99,25 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             $move_draft_picks_stmt->execute([$team_a_id, $team_b_id, $pick_id]);
         }
 
+        $move_no_card_rights_stmt = $db->prepare('UPDATE teams SET y1nc = y1nc + ?, y2nc = y2nc + ? WHERE id = ?');
+
+        foreach ($team_a_no_card_rights as $no_card_right) {
+            if ($no_card_right === '1') {
+                $move_no_card_rights_stmt->execute([-1, 0, $team_a_id]);
+                $move_no_card_rights_stmt->execute([1, 0, $team_b_id]);
+            } else {
+                $move_no_card_rights_stmt->execute([0, -1, $team_a_id]);
+                $move_no_card_rights_stmt->execute([0, 1, $team_b_id]);
+    }
+}
+
         // Log the trade
         log_trade($team_a_id, $team_b_id, $team_a_players, $team_b_players, $team_a_draft_picks, $team_b_draft_picks);
 
         // Confirmation message
         $confirmation_message = "Trade completed: Team A traded players and draft picks with Team B.";
     } else {
+       
         // Prepare trade details for confirmation
         $team_a_id = $_POST['team_a'];
         $team_b_id = $_POST['team_b'];
@@ -250,34 +270,49 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 <div id="recent-trades-container">
     <h3>Recent Trades</h3>
     <table class="recent-trades-table" id="recent-trades-table">
-        <thead>
-            <tr>
-                <th>Trade ID</th>
-                <th>Team A</th>
-                <th>Team B</th>
-                <th>Team A Players</th>
-                <th>Team B Players</th>
-                <th>Team A Draft Picks</th>
-                <th>Team B Draft Picks</th>
-                <th>Trade Date</th>
-                <th>Actions</th>
-            </tr>
-        </thead>
-        <tbody>
-            <?php foreach (get_recent_trades() as $trade): ?>
+            <thead>
                 <tr>
-                    <td><?= $trade['id'] ?></td>
-                    <td><?= htmlspecialchars($team_names[$trade['team_a_id']]) ?></td>
-                    <td><?= htmlspecialchars($team_names[$trade['team_b_id']]) ?></td>
-                    <td><?= htmlspecialchars(implode(', ', fetch_trade_details(json_decode($trade['team_a_players'], true), 'player'))) ?></td>
-                    <td><?= htmlspecialchars(implode(', ', fetch_trade_details(json_decode($trade['team_b_players'], true), 'player'))) ?></td>
-                    <td><?= htmlspecialchars(implode(', ', fetch_trade_details(json_decode($trade['team_a_draft_picks'], true), 'draft_pick'))) ?></td>
-                    <td><?= htmlspecialchars(implode(', ', fetch_trade_details(json_decode($trade['team_b_draft_picks'], true), 'draft_pick'))) ?></td>
-                    <td><?= htmlspecialchars($trade['trade_date']) ?></td>
-                    <td><button onclick="rollbackTrade(<?= $trade['id'] ?>)">Rollback</button></td>
+                    <th>Trade ID</th>
+                    <th>Team A</th>
+                    <th>Team B</th>
+                    <th>Team A Players</th>
+                    <th>Team B Players</th>
+                    <th>Team A Draft Picks</th>
+                    <th>Team B Draft Picks</th>
+                    <?php if ($no_cards_tradeable == 1): ?>
+                        <th>NCR</th>
+                    <?php endif; ?>
+                    <th>Trade Date</th>
+                    <th>Actions</th>
                 </tr>
-            <?php endforeach; ?>
-        </tbody>
+            </thead>
+                <tbody>
+                    <?php foreach (get_recent_trades() as $trade): ?>
+                        <tr>
+                            <td><?= $trade['id'] ?></td>
+                            <td><?= htmlspecialchars($team_names[$trade['team_a_id']]) ?></td>
+                            <td><?= htmlspecialchars($team_names[$trade['team_b_id']]) ?></td>
+                            <td><?= htmlspecialchars(implode(', ', fetch_trade_details(json_decode($trade['team_a_players'], true), 'player'))) ?></td>
+                            <td><?= htmlspecialchars(implode(', ', fetch_trade_details(json_decode($trade['team_b_players'], true), 'player'))) ?></td>
+                            <td><?= htmlspecialchars(implode(', ', fetch_trade_details(json_decode($trade['team_a_draft_picks'], true), 'draft_pick'))) ?></td>
+                            <td><?= htmlspecialchars(implode(', ', fetch_trade_details(json_decode($trade['team_b_draft_picks'], true), 'draft_pick'))) ?></td>
+                            <?php if ($no_cards_tradeable == 1): ?>
+                                <td>
+                                    <?php
+                                    $team_a_nc_rights = json_decode($trade['team_a_no_card_rights'], true) ?? [];
+                                    $team_b_nc_rights = json_decode($trade['team_b_no_card_rights'], true) ?? [];
+                                    $nc_rights = array_merge($team_a_nc_rights, $team_b_nc_rights);
+                                    echo htmlspecialchars(implode(', ', array_map(function($nc) {
+                                        return $nc['num'] . ' (' . $nc['year'] . ')';
+                                    }, $nc_rights)));
+                                    ?>
+                                </td>
+                            <?php endif; ?>
+                            <td><?= htmlspecialchars($trade['trade_date']) ?></td>
+                            <td><button onclick="rollbackTrade(<?= $trade['id'] ?>)">Rollback</button></td>
+                        </tr>
+                    <?php endforeach; ?>
+                </tbody>
     </table>
 </div>
 <p class="center"><a href="dashboard.php">Back to Dashboard</a></p>
@@ -310,54 +345,77 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         fetchPlayersAndPicks(teamBSelect.value, 'team_b');
     });
 
-    function fetchPlayersAndPicks(teamId, team) {
-        fetch(`fetch_team_data.php?team_id=${teamId}`)
-            .then(response => response.json())
-            .then(data => {
-                const playersList = team === 'team_a' ? teamAPlayersList : teamBPlayersList;
-                const draftPicksList = team === 'team_a' ? teamADraftPicksList : teamBDraftPicksList;
+function fetchPlayersAndPicks(teamId, team) {
+    fetch(`fetch_team_data.php?team_id=${teamId}`)
+        .then(response => response.json())
+        .then(data => {
+            const playersList = team === 'team_a' ? teamAPlayersList : teamBPlayersList;
+            const draftPicksList = team === 'team_a' ? teamADraftPicksList : teamBDraftPicksList;
 
-                // Sort players alphabetically by last name
-                data.players.sort((a, b) => a.last_name.localeCompare(b.last_name));
+            // Sort players alphabetically by last name
+            data.players.sort((a, b) => a.last_name.localeCompare(b.last_name));
 
-                playersList.innerHTML = '';
-                data.players.forEach(player => {
-                    const div = document.createElement('div');
-                    div.classList.add('selectable-box');
-                    div.dataset.id = player.id;
-                    div.dataset.type = 'player';
-                    div.dataset.team = team;
-                    let name = `${player.first_name} ${player.last_name}`;
-                    if (player.is_pitcher && player.throws === 'L') {
-                        name += '*';
-                    } else if (!player.is_pitcher && player.bats === 'L') {
-                        name += '*';
-                    } else if (!player.is_pitcher && player.bats === 'S') {
-                        name += '@';
-                    }
-                    if (player.no_card === 1) {
-                        name += '‡';
-                    }
-                    div.textContent = name;
-                    div.onclick = toggleSelection;
-                    playersList.appendChild(div);
-                });
+            playersList.innerHTML = '';
+            data.players.forEach(player => {
+                const div = document.createElement('div');
+                div.classList.add('selectable-box');
+                div.dataset.id = player.id;
+                div.dataset.type = 'player';
+                div.dataset.team = team;
+                let name = `${player.first_name} ${player.last_name}`;
+                if (player.is_pitcher && player.throws === 'L') {
+                    name += '*';
+                } else if (!player.is_pitcher && player.bats === 'L') {
+                    name += '*';
+                } else if (!player.is_pitcher && player.bats === 'S') {
+                    name += '@';
+                }
+                if (player.no_card === 1) {
+                    name += '‡';
+                }
+                div.textContent = name;
+                div.onclick = toggleSelection;
+                playersList.appendChild(div);
+            });
 
-                draftPicksList.innerHTML = '';
-                data.draft_picks.forEach(pick => {
-                    const div = document.createElement('div');
-                    div.classList.add('selectable-box');
-                    div.dataset.id = pick.id;
-                    div.dataset.type = 'draft_pick';
-                    div.dataset.team = team;
-                    const originalTeamName = teams[pick.original_team_id] ? teams[pick.original_team_id].team_name : teams[teamId].team_name;
-                    div.textContent = `Round ${pick.round}, Year ${pick.year} (${originalTeamName})`;
-                    div.onclick = toggleSelection;
-                    draftPicksList.appendChild(div);
-                });
-            })
-            .catch(error => console.error('Error fetching data:', error));
-    }
+            draftPicksList.innerHTML = '';
+            data.draft_picks.forEach(pick => {
+                const div = document.createElement('div');
+                div.classList.add('selectable-box');
+                div.dataset.id = pick.id;
+                div.dataset.type = 'draft_pick';
+                div.dataset.team = team;
+                const originalTeamName = teams[pick.original_team_id] ? teams[pick.original_team_id].team_name : teams[teamId].team_name;
+                div.textContent = `Round ${pick.round}, Year ${pick.year} (${originalTeamName})`;
+                div.onclick = toggleSelection;
+                draftPicksList.appendChild(div);
+            });
+
+            // Display no_card rights
+            const currentYear = new Date().getFullYear();
+            const nextYear = currentYear + 1;
+            const noCardsList = team === 'team_a' ? teamADraftPicksList : teamBDraftPicksList; // Adjusted to match your layout
+            for (let i = 0; i < data.y1nc; i++) {
+                const div = document.createElement('div');
+                div.classList.add('selectable-box');
+                div.dataset.type = 'no_card';
+                div.dataset.team = team;
+                div.textContent = `${currentYear}: No Card Right`;
+                div.onclick = toggleSelection;
+                noCardsList.appendChild(div);
+            }
+            for (let i = 0; i < data.y2nc; i++) {
+                const div = document.createElement('div');
+                div.classList.add('selectable-box');
+                div.dataset.type = 'no_card';
+                div.dataset.team = team;
+                div.textContent = `${nextYear}: No Card Right`;
+                div.onclick = toggleSelection;
+                noCardsList.appendChild(div);
+            }
+        })
+        .catch(error => console.error('Error fetching data:', error));
+}
 
     function toggleSelection(event) {
         const element = event.target;

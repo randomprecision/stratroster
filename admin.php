@@ -35,22 +35,27 @@ $db = Database::getConnection();
 $current_year = date("Y"); // Define current_year before using it
 
 // Fetch current values for league properties
-$league_stmt = $db->query('SELECT background_color, name, draft_rounds, draft_year, maint_mode, options, no_cards_tradeable FROM league_properties LIMIT 1');
+$league_stmt = $db->query('SELECT background_color, name, draft_rounds, draft_year, maint_mode, options, no_cards_tradeable, no_cards_num FROM league_properties LIMIT 1');
 $league = $league_stmt->fetch(PDO::FETCH_ASSOC);
 $background_color = isset($league['background_color']) ? $league['background_color'] : '#FFFFFF'; // Default to white if not set
 $league_name = isset($league['name']) ? $league['name'] : 'My League';
 $draft_rounds = isset($league['draft_rounds']) ? $league['draft_rounds'] : 10; // Default to 10 if not set
 $draft_year = isset($league['draft_year']) ? $league['draft_year'] : $current_year;
 $maint_mode = isset($league['maint_mode']) ? $league['maint_mode'] : 0;
-$options = isset($league['options']) ? $league['options'] : 0;
+$options = isset($league['options']) ? $league['options'] : 1; // Default to 1 if not set
 $no_cards_tradeable = isset($league['no_cards_tradeable']) ? $league['no_cards_tradeable'] : 0;
+$no_cards_num = isset($league['no_cards_num']) ? $league['no_cards_num'] : 1; // Default to 1 if not set
+
 
 // Fetch the list of users
 $users_stmt = $db->query('SELECT u.id, u.username, u.team_id, t.team_name FROM users u LEFT JOIN teams t ON u.team_id = t.id ORDER BY u.username');
 $users = $users_stmt->fetchAll(PDO::FETCH_ASSOC);
 
 // Fetch the list of draft picks
-$draft_picks_stmt = $db->query('SELECT dp.id, dp.round, dp.year, dp.team_id, t.team_name FROM draft_picks dp JOIN teams t ON dp.team_id = t.id');
+$draft_picks_stmt = $db->query('SELECT dp.id, dp.round, dp.year, dp.team_id, dp.original_team_id, t.team_name AS current_team_name, ot.team_name AS original_team_name 
+                                FROM draft_picks dp 
+                                JOIN teams t ON dp.team_id = t.id 
+                                LEFT JOIN teams ot ON dp.original_team_id = ot.id');
 $draft_picks = $draft_picks_stmt->fetchAll(PDO::FETCH_ASSOC);
 
 // Ensure the user has a team assigned
@@ -77,8 +82,9 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['edit_league_properties
     $draft_year = $_POST['draft_year'];
     $draft_rounds = $_POST['draft_rounds'];
     $background_color = $_POST['background_color'];
-    $options = $_POST['options'];
+    $options = $_POST['options'] ?? 1;
     $no_cards_tradeable = isset($_POST['no_cards_tradeable']) ? 1 : 0;
+    $no_cards_num = $_POST['no_cards_num'] ?? 1;
 
     // Check for custom color
     if ($background_color === 'custom') {
@@ -93,8 +99,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['edit_league_properties
         try {
             // Update league properties in the database
             $db->beginTransaction();
-            $update_league_properties_stmt = $db->prepare('UPDATE league_properties SET name = ?, draft_year = ?, draft_rounds = ?, background_color = ?, options = ?, no_cards_tradeable = ? WHERE id = 1');
-            $update_league_properties_stmt->execute([$league_name, $draft_year, $draft_rounds, $background_color, $options, $no_cards_tradeable]);
+            $update_league_properties_stmt = $db->prepare('UPDATE league_properties SET name = ?, draft_year = ?, draft_rounds = ?, background_color = ?, options = ?, no_cards_tradeable = ?, no_cards_num = ? WHERE id = 1');
+            $update_league_properties_stmt->execute([$league_name, $draft_year, $draft_rounds, $background_color, $options, $no_cards_tradeable, $no_cards_num]);
 
             if ($update_league_properties_stmt->rowCount() > 0) {
                 $settings_message = "League properties updated successfully.";
@@ -109,15 +115,14 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['edit_league_properties
             error_log("Error updating league properties: " . $e->getMessage());
         }
 
-        // Update variables with refreshed values
+        // Refresh variables with new values
         $league_name = $league['name'];
         $draft_year = $league['draft_year'];
         $draft_rounds = $league['draft_rounds'];
         $background_color = $league['background_color'];
         $options = $league['options'];
         $no_cards_tradeable = $league['no_cards_tradeable'] ? 'checked' : '';
-
-        echo "<div class='confirmation'>League properties applied successfully.</div>";
+        $no_cards_num = $league['no_cards_num']; 
     }
 }
 
@@ -639,14 +644,26 @@ Database::closeConnection();
             <option value="#FFF5EE" <?= $background_color == '#FFF5EE' ? 'selected' : '' ?>>Seashell</option>
             <option value="custom" <?= preg_match('/^#[a-fA-F0-9]{6}$/', $background_color) ? 'selected' : '' ?>>Custom</option>
         </select>
+
+<!-- options and no cards -->
+
         <input type="text" id="custom_background_color" name="custom_background_color" placeholder="Enter hex code" style="display:none;" value="<?= preg_match('/^#[a-fA-F0-9]{6}$/', $background_color) ? htmlspecialchars(ltrim($background_color, '#')) : '' ?>">
 
-        <label for="options">Options:</label>
-        <input type="number" id="options" name="options" value="<?= htmlspecialchars($options) ?>" required>
+        <label for="options">Options (1-20):</label>
+        <select id="options" name="options">
+            <?php for ($i = 1; $i <= 20; $i++): ?>
+                <option value="<?= $i ?>" <?= $i == $options ? 'selected' : '' ?>><?= $i ?></option>
+            <?php endfor; ?>
+        </select>
 
         <label>No Card Rights Tradeable:</label>
         <input type="checkbox" id="no_cards_tradeable" name="no_cards_tradeable" <?= $no_cards_tradeable ? 'checked' : '' ?>>
-
+        <label for="no_cards_num"># No Card Rights Per Team:</label>
+            <select id="no_cards_num" name="no_cards_num" min="1" max="10">
+                <?php for ($i = 1; $i <= 10; $i++): ?>
+            <option value="<?= $i ?>" <?= $i == $no_cards_num ? 'selected' : '' ?>><?= $i ?></option>
+                <?php endfor; ?>
+            </select>
         <button type="submit" name="edit_league_properties">Apply</button>
     </form>
 </div>
@@ -813,9 +830,10 @@ function updateDraftPicks() {
     const filteredDraftPicks = draftPicks.filter(pick => pick.team_id == fromTeamId);
     filteredDraftPicks.forEach(pick => {
         const option = document.createElement('option');
-        const originalTeamName = teams[pick.team_id] ? teams[pick.team_id].team_name : 'Unknown';
+        const teamName = pick.original_team_id ? teams[pick.original_team_id].team_name : teams[pick.team_id].team_name;
+        
         option.value = pick.id;
-        option.textContent = `Round ${pick.round}, Year ${pick.year} (${originalTeamName})`;
+        option.textContent = `${teamName} ${pick.year} Round ${pick.round}`;
         draftPickSelect.appendChild(option);
     });
 }
@@ -824,7 +842,28 @@ function updateDraftPicks() {
 document.addEventListener('DOMContentLoaded', function() {
     updateDraftPicks();
 });
+
+// Check if tradeable no cards or we have to grey out no_cards_num
+
+function toggleNoCardsNum(enable) {
+    const noCardsNumSelect = document.getElementById('no_cards_num');
+    if (enable) {
+        noCardsNumSelect.disabled = false;
+    } else {
+        noCardsNumSelect.disabled = true;
+        noCardsNumSelect.value = 1; // Default value when disabled
+    }
+}
+document.addEventListener('DOMContentLoaded', function() {
+    const noCardsTradeableCheckbox = document.getElementById('no_cards_tradeable');
+    toggleNoCardsNum(noCardsTradeableCheckbox.checked);
+    noCardsTradeableCheckbox.addEventListener('change', function() {
+        toggleNoCardsNum(this.checked);
+    });
+});
+
 </script>
+
 
 <!-- Maintenance Mode Link -->
 <div class="form-container">
@@ -859,4 +898,3 @@ document.addEventListener('DOMContentLoaded', function() {
 // Close the database connection
 Database::closeConnection();
 ?>
-
