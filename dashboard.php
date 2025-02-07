@@ -62,8 +62,9 @@ $is_admin = $user['is_admin'];
         <ul>
             <li><a href="player_form.php">Add/Edit Players</a></li>
             <li><a href="view_team.php">View Your Team</a></li>
-	    <li><a href="manage_team.php">Manage Your Roster</a></li>
+	    <li><a href="manage_team.php">Manage Your Roster</a></li> 
 	    <li><a href="full_rosters.php">View Full Rosters</a></li>
+	    <li><a href="trading_block.php">View Trading Block</a></li>
             <li><a href="recent.php">View Recent Trades</a></li>
             <li><a href="edit_details.php">Edit User Details</a></li>
 	    <?php if ($is_admin): ?>
