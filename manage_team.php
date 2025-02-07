@@ -311,7 +311,7 @@ foreach ($players as $player) {
                             <td><?= $catcher['name'] ?></td>
                             <td><?= $catcher['team'] ?></td>
                             <td>
-                                <input type="checkbox" id="majors_<?= $catcher['id'] ?>" name="majors_<?= $catcher['id'] ?>" value="1" <?= $catcher['majors'] ? 'checked' : '' ?> onchange="toggleCut(<?= $catcher['id'] ?>); confirmOption(<?= $catcher['id'] ?>, <?= $catcher['majors'] ?>, '<?= $catcher['name'] ?>')">
+                                <input type="checkbox" id="majors_<?= $catcher['id'] ?>" name="majors_<?= $catcher['id'] ?>" value="1" <?= $catcher['majors'] ? 'checked' : '' ?> onchange="toggleCut(<?= $catcher['id'] ?>); confirmOption(<?= $catcher['id'] ?>, this.checked ? 1 : 0, '<?= htmlspecialchars($catcher['name']) ?>')">
                             </td>
                             <?php if (!$in_season): ?>
                                 <td>
@@ -336,7 +336,7 @@ foreach ($players as $player) {
                             <td><?= $infielder['name'] ?></td>
                             <td><?= $infielder['team'] ?></td>
                             <td>
-                                <input type="checkbox" id="majors_<?= $infielder['id'] ?>" name="majors_<?= $infielder['id'] ?>" value="1" <?= $infielder['majors'] ? 'checked' : '' ?> onchange="toggleCut(<?= $infielder['id'] ?>); confirmOption(<?= $infielder['id'] ?>, <?= $infielder['majors'] ?>, '<?= $infielder['name'] ?>')">
+                                <input type="checkbox" id="majors_<?= $infielder['id'] ?>" name="majors_<?= $infielder['id'] ?>" value="1" <?= $infielder['majors'] ? 'checked' : '' ?> onchange="toggleCut(<?= $infielder['id'] ?>); confirmOption(<?= $infielder['id'] ?>, this.checked ? 1 : 0, '<?= htmlspecialchars($infielder['name']) ?>')">
                             </td>
                             <?php if (!$in_season): ?>
                                 <td>
@@ -389,7 +389,7 @@ foreach ($players as $player) {
                             <td><?= $pitcher['name'] ?></td>
                             <td><?= $pitcher['team'] ?></td>
                             <td>
-                                <input type="checkbox" id="majors_<?= $pitcher['id'] ?>" name="majors_<?= $pitcher['id'] ?>" value="1" <?= $pitcher['majors'] ? 'checked' : '' ?> onchange="toggleCut(<?= $pitcher['id'] ?>); confirmOption(<?= $pitcher['id'] ?>, <?= $pitcher['majors'] ?>, '<?= $pitcher['name'] ?>')">
+                                <input type="checkbox" id="majors_<?= $pitcher['id'] ?>" name="majors_<?= $pitcher['id'] ?>" value="1" <?= $pitcher['majors'] ? 'checked' : '' ?> onchange="toggleCut(<?= $pitcher['id'] ?>); confirmOption(<?= $pitcher['id'] ?>, this.checked ? 1 : 0, '<?= htmlspecialchars($pitcher['name']) ?>')">
                             </td>
                             <?php if (!$in_season): ?>
                                 <td>
