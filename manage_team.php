@@ -16,18 +16,34 @@ if (!isset($_SESSION['user_id'])) {
     exit;
 }
 
+// Fetch the user's team ID and team name (do this BEFORE form handling)
+$user_stmt = $db->prepare('SELECT t.id as team_id, t.team_name as team_name, t.y1nc, t.y2nc, t.options as team_options
+                           FROM users u
+                           JOIN teams t ON u.team_id = t.id
+                           WHERE u.id = ?');
+$user_stmt->execute([$_SESSION['user_id']]);
+$user_team = $user_stmt->fetch(PDO::FETCH_ASSOC);
+
+if (!$user_team) {
+    echo "Team not found for the user.";
+    exit;
+}
+
+// Initialize team options
+$team_options = $user_team['team_options'];
+
 // Handle form submission
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['apply_changes'])) {
     try {
         $db->beginTransaction();
 
-        // Fetch current options for the team
+        // Fetch current options for the team (again, if needed)
         $options_stmt = $db->prepare('SELECT options FROM teams WHERE id = ?');
         $options_stmt->execute([$user_team['team_id']]);
         $team_options = $options_stmt->fetch(PDO::FETCH_ASSOC)['options'];
 
         $players_stmt = $db->prepare('SELECT id, majors FROM players WHERE fantasy_team_id = ?');
-        $players_stmt->execute([$_SESSION['user_id']]);
+        $players_stmt->execute([$user_team['team_id']]);  // using team_id instead of user_id here
         $players = $players_stmt->fetchAll(PDO::FETCH_ASSOC);
 
         foreach ($players as $player) {
@@ -55,23 +71,11 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['apply_changes'])) {
     }
 }
 
-// Fetch the user's team ID and team name
-$user_stmt = $db->prepare('SELECT t.id as team_id, t.team_name as team_name, t.y1nc, t.y2nc
-                           FROM users u
-                           JOIN teams t ON u.team_id = t.id
-                           WHERE u.id = ?');
-$user_stmt->execute([$_SESSION['user_id']]);
-$user_team = $user_stmt->fetch(PDO::FETCH_ASSOC);
-
-if (!$user_team) {
-    echo "Team not found for the user.";
-    exit;
-}
-
 // Fetch the players for the user's team
 $players_stmt = $db->prepare('SELECT * FROM players WHERE fantasy_team_id = ? ORDER BY last_name');
 $players_stmt->execute([$user_team['team_id']]);
 $players = $players_stmt->fetchAll(PDO::FETCH_ASSOC);
+
 // Fetch the draft picks for the user's team
 $team_stmt = $db->query('SELECT id, team_name FROM teams');
 $team_names = [];
@@ -157,15 +161,17 @@ $total_no_cards = 0;
 
 foreach ($players as $player) {
     $name = htmlspecialchars($player['first_name'] . ' ' . $player['last_name']);
-    
+
     if ($player['majors']) {
         $name = '<strong>' . $name . '</strong>';
     }
-    
+
     if ($player['cut']) {
-        $name = '<span style="color: red;"><strong>' . $name . '</strong></span>';
+        $name = '<span style="color: red;"><strong>' . $player['first_name'] . ' ' . $player['last_name'] . '</strong></span>';
+    } elseif (!$player['majors']) {
+        $name = htmlspecialchars($player['first_name'] . ' ' . $player['last_name']);
     }
-    
+
     if ($player['is_pitcher'] && $player['throws'] == 'L') {
         $name .= '*';
     } elseif (!$player['is_pitcher'] && $player['bats'] == 'L') {
@@ -178,23 +184,20 @@ foreach ($players as $player) {
         $total_no_cards++;
     }
 
-    if (!$in_season && isset($_POST["cut_$player_id"]) && $_POST["cut_$player_id"]) {
-        $name = '<span style="color: red;"><strong>' . $name . '</strong></span>';
-    }
-
-    $mlb_team = htmlspecialchars($player['team']); // Fetch the MLB team
+    $mlb_team = htmlspecialchars($player['team']);
 
     if ($player['is_pitcher']) {
-        $pitchers[] = ['name' => $name, 'team' => $mlb_team, 'id' => $player['id'], 'majors' => $player['majors']];
+        $pitchers[] = ['name' => $name, 'team' => $mlb_team, 'id' => $player['id'], 'majors' => $player['majors'], 'cut' => $player['cut']];
     } elseif ($player['is_catcher']) {
-        $catchers[] = ['name' => $name, 'team' => $mlb_team, 'id' => $player['id'], 'majors' => $player['majors']];
+        $catchers[] = ['name' => $name, 'team' => $mlb_team, 'id' => $player['id'], 'majors' => $player['majors'], 'cut' => $player['cut']];
     } elseif ($player['is_infielder']) {
-        $infielders[] = ['name' => $name, 'team' => $mlb_team, 'id' => $player['id'], 'majors' => $player['majors']];
+        $infielders[] = ['name' => $name, 'team' => $mlb_team, 'id' => $player['id'], 'majors' => $player['majors'], 'cut' => $player['cut']];
     } elseif ($player['is_outfielder']) {
-        $outfielders[] = ['name' => $name, 'team' => $mlb_team, 'id' => $player['id'], 'majors' => $player['majors']];
+        $outfielders[] = ['name' => $name, 'team' => $mlb_team, 'id' => $player['id'], 'majors' => $player['majors'], 'cut' => $player['cut']];
     }
     $total_players++;
 }
+
 ?>
 <!DOCTYPE html>
 <html>
@@ -266,25 +269,26 @@ foreach ($players as $player) {
         }
     </style>
     <script>
-        function confirmOption(playerId, isMajors, playerName) {
-            let optionsRemaining = <?= $league['options'] ?> - <?= $team_options ?>;
-            if (<?= $in_season ?> && isMajors == 1) {
-                if (!confirm(`This move will constitute a roster option. You have ${optionsRemaining} options remaining this season.`)) {
-                    document.getElementById(`majors_${playerId}`).checked = true;
+            function confirmOption(playerId, isMajors, playerName) {
+                let optionsRemaining = <?= $league['options'] ?> - <?= $team_options ?>;
+                if (<?= $in_season ?> && isMajors == 1) {
+                    if (!confirm(`This move will constitute a roster option. You have ${optionsRemaining} options remaining this season.`)) {
+                        document.getElementById(`majors_${playerId}`).checked = true;
+                    }
+                } else {
+                    alert(`Adding player ${playerName} to majors.`);
                 }
-            } else {
-                alert(`Adding player ${playerName} to majors.`);
             }
-        }
 
-        function toggleCut(playerId) {
-            const majorsCheckbox = document.getElementById(`majors_${playerId}`);
-            const cutCheckbox = document.getElementById(`cut_${playerId}`);
+            function toggleCut(playerId) {
+                const majorsCheckbox = document.getElementById(`majors_${playerId}`);
+                const cutCheckbox = document.getElementById(`cut_${playerId}`);
 
-            if (majorsCheckbox && cutCheckbox) {
-                cutCheckbox.disabled = majorsCheckbox.checked;
+                if (majorsCheckbox && cutCheckbox) {
+                    cutCheckbox.disabled = majorsCheckbox.checked;
+                    majorsCheckbox.disabled = cutCheckbox.checked;
+                }
             }
-        }
     </script>
 </head>
 <body>
@@ -311,7 +315,7 @@ foreach ($players as $player) {
                             </td>
                             <?php if (!$in_season): ?>
                                 <td>
-                                    <input type="checkbox" id="cut_<?= $catcher['id'] ?>" name="cut_<?= $catcher['id'] ?>" value="1" class="bold-red" <?= $catcher['cut'] ? 'checked' : '' ?>>
+                                    <input type="checkbox" id="cut_<?= $catcher['id'] ?>" name="cut_<?= $catcher['id'] ?>" value="1" class="bold-red" <?= $catcher['cut'] ? 'checked' : '' ?> onchange="toggleCut(<?= $catcher['id'] ?>);">
                                 </td>
                             <?php endif; ?>
                         </tr>
@@ -336,14 +340,13 @@ foreach ($players as $player) {
                             </td>
                             <?php if (!$in_season): ?>
                                 <td>
-                                    <input type="checkbox" id="cut_<?= $infielder['id'] ?>" name="cut_<?= $infielder['id'] ?>" value="1" class="bold-red" <?= $infielder['cut'] ? 'checked' : '' ?>>
+                                    <input type="checkbox" id="cut_<?= $infielder['id'] ?>" name="cut_<?= $infielder['id'] ?>" value="1" class="bold-red" <?= $infielder['cut'] ? 'checked' : '' ?> onchange="toggleCut(<?= $infielder['id'] ?>);">
                                 </td>
                             <?php endif; ?>
                         </tr>
                     <?php endforeach; ?>
                 </table>
             </div>
-
             <div class="team-column team-column-right">
                 <h3>Outfielders (<?= count($outfielders) ?>)</h3>
                 <table>
@@ -355,21 +358,22 @@ foreach ($players as $player) {
                             <th>Cut</th>
                         <?php endif; ?>
                     </tr>
-                    <?php foreach ($outfielders as $outfielder): ?>
+                        <?php foreach ($outfielders as $outfielder): ?>
                         <tr>
                             <td><?= $outfielder['name'] ?></td>
                             <td><?= $outfielder['team'] ?></td>
                             <td>
-                                <input type="checkbox" id="majors_<?= $outfielder['id'] ?>" name="majors_<?= $outfielder['id'] ?>" value="1" <?= $outfielder['majors'] ? 'checked' : '' ?> onchange="toggleCut(<?= $outfielder['id'] ?>); confirmOption(<?= $outfielder['id'] ?>, <?= $outfielder['majors'] ?>, '<?= $outfielder['name'] ?>')">
+                                <input type="checkbox" id="majors_<?= $outfielder['id'] ?>" name="majors_<?= $outfielder['id'] ?>" value="1" <?= $outfielder['majors'] ? 'checked' : '' ?> onchange="toggleCut(<?= $outfielder['id'] ?>); confirmOption(<?= $outfielder['id'] ?>, this.checked ? 1 : 0, '<?= htmlspecialchars($outfielder['name']) ?>')">
                             </td>
                             <?php if (!$in_season): ?>
                                 <td>
-                                    <input type="checkbox" id="cut_<?= $outfielder['id'] ?>" name="cut_<?= $outfielder['id'] ?>" value="1" class="bold-red" <?= $outfielder['cut'] ? 'checked' : '' ?>>
+                                    <input type="checkbox" id="cut_<?= $outfielder['id'] ?>" name="cut_<?= $outfielder['id'] ?>" value="1" class="bold-red" <?= $outfielder['cut'] ? 'checked' : '' ?> onchange="toggleCut(<?= $outfielder['id'] ?>);">
                                 </td>
                             <?php endif; ?>
                         </tr>
-                    <?php endforeach; ?>
+                        <?php endforeach; ?>
                 </table>
+                </div>
                 <h3>Pitchers (<?= count($pitchers) ?>)</h3>
                 <table>
                     <tr>
@@ -389,7 +393,7 @@ foreach ($players as $player) {
                             </td>
                             <?php if (!$in_season): ?>
                                 <td>
-                                    <input type="checkbox" id="cut_<?= $pitcher['id'] ?>" name="cut_<?= $pitcher['id'] ?>" value="1" class="bold-red" <?= $pitcher['cut'] ? 'checked' : '' ?>>
+                                    <input type="checkbox" id="cut_<?= $pitcher['id'] ?>" name="cut_<?= $pitcher['id'] ?>" value="1" class="bold-red" <?= $pitcher['cut'] ? 'checked' : '' ?> onchange="toggleCut(<?= $pitcher['id'] ?>);">
                                 </td>
                             <?php endif; ?>
                         </tr>
