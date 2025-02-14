@@ -39,34 +39,47 @@ $team_players = [];
 $team_player_counts = [];
 foreach ($players as $player) {
     $name = htmlspecialchars_decode($player['first_name'] . ' ' . $player['last_name']);
+
+    // Apply styling based on player status
+    $styled_name = $name;
+    if ($player['majors']) {
+        $styled_name = '<strong>' . $styled_name . '</strong>';
+    }
+    if ($player['dl']) {
+        $styled_name = '<span style="color: orange;">' . $styled_name . '</span>';
+    }
+    if ($player['cut']) {
+        $styled_name = '<span style="color: red;">' . $styled_name . '</span>';
+    }
+
     if ($player['is_pitcher'] && $player['throws'] == 'L') {
-        $name .= '*';
+        $styled_name .= '*';
     } elseif (!$player['is_pitcher'] && $player['bats'] == 'L') {
-        $name .= '*';
+        $styled_name .= '*';
     } elseif (!$player['is_pitcher'] && $player['bats'] == 'S') {
-        $name .= '@';
+        $styled_name .= '@';
     }
     if ($player['no_card'] == 1) {
-        $name .= '‡';
+        $styled_name .= '‡';
         $team_player_counts[$player['fantasy_team_id']]['no_cards'] = isset($team_player_counts[$player['fantasy_team_id']]['no_cards']) ? $team_player_counts[$player['fantasy_team_id']]['no_cards'] + 1 : 1;
     }
 
     // Include MLB team information
     $mlb_team = htmlspecialchars_decode($player['mlb_team']);
-    $team_players[$player['fantasy_team_id']][] = ['name' => $name, 'mlb_team' => $mlb_team];
+    $team_players[$player['fantasy_team_id']][] = ['name' => $styled_name, 'mlb_team' => $mlb_team];
 
     $team_player_counts[$player['fantasy_team_id']]['total'] = isset($team_player_counts[$player['fantasy_team_id']]['total']) ? $team_player_counts[$player['fantasy_team_id']]['total'] + 1 : 1;
 
     if ($player['is_pitcher']) {
-        $team_players[$player['fantasy_team_id']]['Pitchers'][] = ['name' => $name, 'mlb_team' => $mlb_team];
+        $team_players[$player['fantasy_team_id']]['Pitchers'][] = ['name' => $styled_name, 'mlb_team' => $mlb_team];
     } elseif ($player['is_catcher']) {
-        $team_players[$player['fantasy_team_id']]['Catchers'][] = ['name' => $name, 'mlb_team' => $mlb_team];
+        $team_players[$player['fantasy_team_id']]['Catchers'][] = ['name' => $styled_name, 'mlb_team' => $mlb_team];
     } elseif ($player['is_infielder']) {
-        $team_players[$player['fantasy_team_id']]['Infielders'][] = ['name' => $name, 'mlb_team' => $mlb_team];
+        $team_players[$player['fantasy_team_id']]['Infielders'][] = ['name' => $styled_name, 'mlb_team' => $mlb_team];
     } elseif ($player['is_outfielder']) {
-        $team_players[$player['fantasy_team_id']]['Outfielders'][] = ['name' => $name, 'mlb_team' => $mlb_team];
+        $team_players[$player['fantasy_team_id']]['Outfielders'][] = ['name' => $styled_name, 'mlb_team' => $mlb_team];
     } elseif ($player['is_dh']) {
-        $team_players[$player['fantasy_team_id']]['Designated Hitters'][] = ['name' => $name, 'mlb_team' => $mlb_team];
+        $team_players[$player['fantasy_team_id']]['Designated Hitters'][] = ['name' => $styled_name, 'mlb_team' => $mlb_team];
     }
 }
 
@@ -233,7 +246,7 @@ function getPlayerCounts($players) {
                 <?php if (!empty($team_players[$team['id']]['Catchers'])): ?>
                     <?php foreach ($team_players[$team['id']]['Catchers'] as $catcher): ?>
                         <li class="player-list">
-                            <span><?= htmlspecialchars($catcher['name']) ?></span>
+                            <span><?= $catcher['name'] ?></span>
                             <span><?= htmlspecialchars($catcher['mlb_team']) ?></span>
                         </li>
                     <?php endforeach; ?>
@@ -247,7 +260,7 @@ function getPlayerCounts($players) {
                 <?php if (!empty($team_players[$team['id']]['Infielders'])): ?>
                     <?php foreach ($team_players[$team['id']]['Infielders'] as $infielder): ?>
                         <li class="player-list">
-                            <span><?= htmlspecialchars($infielder['name']) ?></span>
+                            <span><?= $infielder['name'] ?></span>
                             <span><?= htmlspecialchars($infielder['mlb_team']) ?></span>
                         </li>
                     <?php endforeach; ?>
@@ -260,7 +273,7 @@ function getPlayerCounts($players) {
                 <?php if (!empty($team_players[$team['id']]['Outfielders'])): ?>
                     <?php foreach ($team_players[$team['id']]['Outfielders'] as $outfielder): ?>
                         <li class="player-list">
-                            <span><?= htmlspecialchars($outfielder['name']) ?></span>
+                            <span><?= $outfielder['name'] ?></span>
                             <span><?= htmlspecialchars($outfielder['mlb_team']) ?></span>
                         </li>
                     <?php endforeach; ?>
@@ -274,7 +287,7 @@ function getPlayerCounts($players) {
                 <ul>
                     <?php foreach ($team_players[$team['id']]['Designated Hitters'] as $dh): ?>
                         <li class="player-list">
-                            <span><?= htmlspecialchars($dh['name']) ?></span>
+                            <span><?= $dh['name'] ?></span>
                             <span><?= htmlspecialchars($dh['mlb_team']) ?></span>
                         </li>
                     <?php endforeach; ?>
@@ -286,7 +299,7 @@ function getPlayerCounts($players) {
                 <?php if (!empty($team_players[$team['id']]['Pitchers'])): ?>
                     <?php foreach ($team_players[$team['id']]['Pitchers'] as $pitcher): ?>
                         <li class="player-list">
-                            <span><?= htmlspecialchars($pitcher['name']) ?></span>
+                            <span><?= $pitcher['name'] ?></span>
                             <span><?= htmlspecialchars($pitcher['mlb_team']) ?></span>
                         </li>
                     <?php endforeach; ?>
@@ -316,7 +329,7 @@ function getPlayerCounts($players) {
     <div class="footer">
         <p><a href="dashboard.php">Back to Dashboard</a></p>
     </div>
-    
+
     <script>
     function searchPlayers() {
         const input = document.getElementById('search-input').value.toLowerCase();

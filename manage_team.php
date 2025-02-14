@@ -3,7 +3,7 @@ session_start();
 $db = new PDO("sqlite:./stratroster.db");
 
 // Fetch league properties
-$league_stmt = $db->query('SELECT background_color, in_season, no_cards_tradeable, options FROM league_properties LIMIT 1');
+$league_stmt = $db->query('SELECT background_color, in_season, no_cards_tradeable FROM league_properties LIMIT 1');
 $league = $league_stmt->fetch(PDO::FETCH_ASSOC);
 $background_color = $league['background_color'];
 $in_season = $league['in_season'];
@@ -16,7 +16,7 @@ if (!isset($_SESSION['user_id'])) {
 }
 
 // Fetch the user's information
-$user_stmt = $db->prepare('SELECT u.*, t.id as team_id, t.team_name as team_name, t.y1nc, t.y2nc, t.options as team_options
+$user_stmt = $db->prepare('SELECT u.*, t.id as team_id, t.team_name as team_name, t.y1nc, t.y2nc
                            FROM users u
                            LEFT JOIN teams t ON u.team_id = t.id
                            WHERE u.id = ?');
@@ -42,7 +42,7 @@ if (!$team_id_to_manage) {
 }
 
 // Fetch the team being managed
-$managed_team_stmt = $db->prepare('SELECT id, team_name, options FROM teams WHERE id = ?');
+$managed_team_stmt = $db->prepare('SELECT id, team_name FROM teams WHERE id = ?');
 $managed_team_stmt->execute([$team_id_to_manage]);
 $managed_team = $managed_team_stmt->fetch(PDO::FETCH_ASSOC);
 
@@ -51,39 +51,28 @@ if (!$managed_team) {
     exit;
 }
 
-$team_options = $managed_team['options'];  //Current roster options
+$updateSuccessful = false;
 
 // Handle form submission
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['apply_changes'])) {
     try {
         $db->beginTransaction();
 
-        // Fetch current options for the team (again, if needed)
-        $options_stmt = $db->prepare('SELECT options FROM teams WHERE id = ?');
-        $options_stmt->execute([$managed_team['id']]);
-        $team_options = $options_stmt->fetch(PDO::FETCH_ASSOC)['options'];
-
-        $players_stmt = $db->prepare('SELECT id, majors, dl, tradeblock FROM players WHERE fantasy_team_id = ?');
-        $players_stmt->execute([$managed_team['id']]);  // using team_id instead of user_id here
+        $players_stmt = $db->prepare('SELECT id, majors, dl, tradeblock, first_name, last_name FROM players WHERE fantasy_team_id = ?');
+        $players_stmt->execute([$managed_team['id']]);
         $players = $players_stmt->fetchAll(PDO::FETCH_ASSOC);
 
         foreach ($players as $player) {
             $player_id = $player['id'];
-            $majors = isset($_POST["majors_$player_id"]) ? $_POST["majors_$player_id"] : 0;
+            $majors = isset($_POST["majors_$player_id"]) ? intval($_POST["majors_$player_id"]) : 0; //Ensure integer
             $cut = isset($_POST["cut_$player_id"]) ? $_POST["cut_$player_id"] : 0;
             $dl = isset($_POST["dl_$player_id"]) ? $_POST["dl_$player_id"] : 0;
             $tradeblock = isset($_POST["tradeblock_$player_id"]) ? $_POST["tradeblock_$player_id"] : 0;
 
-            // Check if in-season and player is being removed from majors
-            if ($in_season && $player['majors'] && !$majors) {
-                $team_options++;
-                $update_team_stmt = $db->prepare('UPDATE teams SET options = ? WHERE id = ?');
-                $update_team_stmt->execute([$team_options, $managed_team['id']]);
-                echo "<script>alert('This move will constitute a roster option. You have " . ($league_options - $team_options) . " options remaining this season.');</script>";
-            }
 
             $update_stmt = $db->prepare('UPDATE players SET majors = ?, cut = ?, dl = ?, tradeblock = ? WHERE id = ?');
             $update_stmt->execute([$majors, $cut, $dl, $tradeblock, $player_id]);
+            $updateSuccessful = true;
         }
 
         $db->commit();
@@ -152,13 +141,6 @@ function format_draft_picks($picks, $team_names) {
             $current_team_name = $original_team_name;
         } elseif ($pick['round'] == end($current_range) + 1) {
             $current_range[] = $pick['round'];
-        } else {
-            if (count($current_range) > 1) {
-                $ranges[] = "$current_team_name round " . $current_range[0] . '-' . $current_range[count($current_range) - 1];
-            } else {
-                $ranges[] = "$current_team_name round " . $current_range[0];
-            }
-            $current_range = [$pick['round']];
             $current_team_name = $original_team_name;
         }
     }
@@ -199,7 +181,7 @@ foreach ($players as $player) {
         $name .= '*';
     } elseif (!$player['is_pitcher'] && $player['bats'] == 'L') {
         $name .= '*';
-    } elseif (!$player['is_pitcher'] && $player['bats'] == 'S') {
+    } elseif ($player['is_pitcher'] && $player['bats'] == 'S') {
         $name .= '@';
     }
     if ($player['no_card'] == 1) {
@@ -305,28 +287,7 @@ foreach ($players as $player) {
             }
         }
     </style>
-    <script>
-            function confirmOption(playerId, isMajors, playerName) {
-                let optionsRemaining = <?= $league['options'] ?> - <?= $team_options ?>;
-                if (<?= $in_season ?> && isMajors == 1) {
-                    if (!confirm(`This move will constitute a roster option. You have ${optionsRemaining} options remaining this season.`)) {
-                        document.getElementById(`majors_${playerId}`).checked = true;
-                    }
-                } else {
-                    alert(`Adding player ${playerName} to majors.`);
-                }
-            }
 
-            function toggleCut(playerId) {
-                const majorsCheckbox = document.getElementById(`majors_${playerId}`);
-                const cutCheckbox = document.getElementById(`cut_${playerId}`);
-
-                if (majorsCheckbox && cutCheckbox) {
-                    cutCheckbox.disabled = majorsCheckbox.checked;
-                    majorsCheckbox.disabled = cutCheckbox.checked;
-                }
-            }
-    </script>
 </head>
 <body>
      <?php
@@ -350,7 +311,7 @@ foreach ($players as $player) {
         ?>
 
     <div class="team-container">
-        <h2><?= htmlspecialchars($user_team['team_name']) ?></h2>
+        <h2><?= htmlspecialchars($managed_team['team_name']) ?></h2>
         <form method="POST" action="manage_team.php">
             <div class="team-column team-column-left">
                 <h3>Catchers (<?= count($catchers) ?>)</h3>
@@ -370,7 +331,7 @@ foreach ($players as $player) {
                             <td><?= $catcher['name'] ?></td>
                             <td><?= $catcher['team'] ?></td>
                             <td>
-                                <input type="checkbox" id="majors_<?= $catcher['id'] ?>" name="majors_<?= $catcher['id'] ?>" value="1" <?= $catcher['majors'] ? 'checked' : '' ?> onchange="toggleCut(<?= $catcher['id'] ?>); confirmOption(<?= $catcher['id'] ?>, this.checked ? 1 : 0, '<?= htmlspecialchars($catcher['name']) ?>')">
+                                <input type="checkbox" id="majors_<?= $catcher['id'] ?>" name="majors_<?= $catcher['id'] ?>" value="1" <?php echo ($catcher['majors'] == 1) ? 'checked' : ''; ?> >
                             </td>
                             <?php if (!$in_season): ?>
                                 <td>
@@ -403,7 +364,7 @@ foreach ($players as $player) {
                             <td><?= $infielder['name'] ?></td>
                             <td><?= $infielder['team'] ?></td>
                             <td>
-                                <input type="checkbox" id="majors_<?= $infielder['id'] ?>" name="majors_<?= $infielder['id'] ?>" value="1" <?= $infielder['majors'] ? 'checked' : '' ?> onchange="toggleCut(<?= $infielder['id'] ?>); confirmOption(<?= $infielder['id'] ?>, this.checked ? 1 : 0, '<?= htmlspecialchars($infielder['name']) ?>')">
+                                <input type="checkbox" id="majors_<?= $infielder['id'] ?>" name="majors_<?= $infielder['id'] ?>" value="1" <?php echo ($infielder['majors'] == 1) ? 'checked' : ''; ?> >
                             </td>
                             <?php if (!$in_season): ?>
                                 <td>
@@ -438,7 +399,7 @@ foreach ($players as $player) {
                             <td><?= $outfielder['name'] ?></td>
                             <td><?= $outfielder['team'] ?></td>
                             <td>
-                                <input type="checkbox" id="majors_<?= $outfielder['id'] ?>" name="majors_<?= $outfielder['id'] ?>" value="1" <?= $outfielder['majors'] ? 'checked' : '' ?> onchange="toggleCut(<?= $outfielder['id'] ?>); confirmOption(<?= $outfielder['id'] ?>, this.checked ? 1 : 0, '<?= htmlspecialchars($outfielder['name']) ?>')">
+                                <input type="checkbox" id="majors_<?= $outfielder['id'] ?>" name="majors_<?= $outfielder['id'] ?>" value="1" <?php echo ($outfielder['majors'] == 1) ? 'checked' : ''; ?> >
                             </td>
                             <?php if (!$in_season): ?>
                                 <td>
@@ -472,7 +433,7 @@ foreach ($players as $player) {
                             <td><?= $pitcher['name'] ?></td>
                             <td><?= $pitcher['team'] ?></td>
                             <td>
-                                <input type="checkbox" id="majors_<?= $pitcher['id'] ?>" name="majors_<?= $pitcher['id'] ?>" value="1" <?= $pitcher['majors'] ? 'checked' : '' ?> onchange="toggleCut(<?= $pitcher['id'] ?>); confirmOption(<?= $pitcher['id'] ?>, this.checked ? 1 : 0, '<?= htmlspecialchars($pitcher['name']) ?>')">
+                                <input type="checkbox" id="majors_<?= $pitcher['id'] ?>" name="majors_<?= $pitcher['id'] ?>" value="1" <?php echo ($pitcher['majors'] == 1) ? 'checked' : ''; ?> >
                             </td>
                             <?php if (!$in_season): ?>
                                 <td>
@@ -504,9 +465,9 @@ foreach ($players as $player) {
                 <?= format_draft_picks($picks, $team_names) ?>
                 <?php if ($no_cards_tradeable == 1): ?>
                     <?php if ($year == $draft_year): ?>
-                        <div>No Card Rights: <?= htmlspecialchars($user_team['y1nc']) ?></div>
+                        <div>No Card Rights: <?= htmlspecialchars($user['y1nc']) ?></div>
                     <?php elseif ($year == $draft_year + 1): ?>
-                        <div>No Card Rights: <?= htmlspecialchars($user_team['y2nc']) ?></div>
+                        <div>No Card Rights: <?= htmlspecialchars($user['y2nc']) ?></div>
                     <?php endif; ?>
                 <?php endif; ?>
             </div>

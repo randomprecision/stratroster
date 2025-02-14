@@ -38,7 +38,7 @@ while ($team = $team_stmt->fetch(PDO::FETCH_ASSOC)) {
     $team_names[$team['id']] = $team['team_name'];
 }
 
-$draft_picks_stmt = $db->prepare('SELECT draft_picks.*, 
+$draft_picks_stmt = $db->prepare('SELECT draft_picks.*,
                                   original_teams.team_name AS original_team_name
                                   FROM draft_picks
                                   JOIN teams ON draft_picks.team_id = teams.id
@@ -85,7 +85,7 @@ function format_draft_picks($picks, $team_names) {
             $current_team_name = $original_team_name;
         }
     }
-    
+
     if (!empty($current_range)) {
         if (count($current_range) > 1) {
             $ranges[] = "$current_team_name round " . $current_range[0] . '-' . $current_range[count($current_range) - 1];
@@ -117,6 +117,16 @@ foreach ($players as $player) {
     if ($player['no_card'] == 1) {
         $name .= '‡';
         $total_no_cards++;
+    }
+
+    // Apply boldface if player.majors is set
+    if (!empty($player['majors'])) {
+        $name = "<strong>$name</strong>";
+    }
+
+    // Apply red text if player.cut is set
+    if (!empty($player['cut'])) {
+        $name = "<span style='color:red'>$name</span>";
     }
 
     $mlb_team = htmlspecialchars($player['team']); // Fetch the MLB team
@@ -262,17 +272,19 @@ foreach ($players as $player) {
         <p>Total Players: <?= $total_players ?>, Total No Cards: <?= $total_no_cards ?></p>
 
         <h3>Draft Picks</h3>
-        <ul>
-            <?php foreach ($draft_picks_by_year as $year => $picks): ?>
-                <li><strong><?= htmlspecialchars($year) ?></strong></li>
-                <ul>
-                    <li><?= format_draft_picks($picks, $team_names, $user_team['team_id']) ?></li>
-                </ul>
-            <?php endforeach; ?>
-        </ul>
-    </div>
+        <?php foreach ($draft_picks_by_year as $year => $picks): ?>
+            <strong><?= htmlspecialchars($year) ?></strong>
+            <div class="no-bullets">
+                <?= format_draft_picks($picks, $team_names) ?>
+                <?php if ($year == $draft_year && $no_cards_tradeable): ?>
+                    <div>No Card Rights: <?= htmlspecialchars($user_team['y1nc']) ?></div>
+                <?php elseif ($year == $draft_year + 1 && $no_cards_tradeable): ?>
+                    <div>No Card Rights: <?= htmlspecialchars($user_team['y2nc']) ?></div>
+                <?php endif; ?>
+            </div>
+        <?php endforeach; ?>
 
-    <p class="center"><a href="dashboard.php">Back to Dashboard</a></p>
+        <p class="center"><a href="dashboard.php">Back to Dashboard</a></p>
+    </div>
 </body>
 </html>
-
