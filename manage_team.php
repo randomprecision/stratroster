@@ -55,11 +55,14 @@ $updateSuccessful = false;
 
 // Handle form submission
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['apply_changes'])) {
+    // Get the team ID from the POST data. If admin is managing a different team, use that team ID.
+    $team_id_to_update = $_POST['team_id_to_manage'];
+
     try {
         $db->beginTransaction();
 
         $players_stmt = $db->prepare('SELECT id, majors, dl, tradeblock, first_name, last_name FROM players WHERE fantasy_team_id = ?');
-        $players_stmt->execute([$managed_team['id']]);
+        $players_stmt->execute([$team_id_to_update]);
         $players = $players_stmt->fetchAll(PDO::FETCH_ASSOC);
 
         foreach ($players as $player) {
@@ -313,6 +316,9 @@ foreach ($players as $player) {
     <div class="team-container">
         <h2><?= htmlspecialchars($managed_team['team_name']) ?></h2>
         <form method="POST" action="manage_team.php">
+            <!-- Hidden input to store the team ID being managed -->
+            <input type="hidden" name="team_id_to_manage" value="<?= htmlspecialchars($managed_team['id']) ?>">
+
             <div class="team-column team-column-left">
                 <h3>Catchers (<?= count($catchers) ?>)</h3>
                 <table>
